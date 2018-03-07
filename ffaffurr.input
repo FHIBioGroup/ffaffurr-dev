@@ -1,0 +1,156 @@
+#######################################
+# General input file 'ffaffurr.input' #
+#######################################
+
+# bonding terms are of form: kB * (r-r0)**2
+# kB = spring constant parameter
+#      -> original FF parameters are used
+#         (parameters not altered)
+# r0 = equlibrium bond length parameter between pair of atoms
+#      -> original FF parameters can be used (parameters not altered)
+#         (use: fine_tune_r0 False)
+#         OR an average distance over all FHI-aims input logfiles
+#            is computed to estimate (fine-tune) r0
+#            (use: fine_tune_r0 True)
+#            -> this makes ONLY sense if geometrically optimized
+#               structures have been used in high-level input logfiles
+fine_tune_r0 False
+#fine_tune_r0 True
+
+# angles bending terms are of form: Ktheta * (theta-theta0)**2
+# ktheta = spring constant parameter
+#          -> original FF parameters are used
+#             (parameters not altered)
+# theta0 = equlibrium angle parameter between triplet of atoms
+#          -> original FF parameters can be used (parameters not altered)
+#             (use: fine_tune_theta0 False)
+#             OR an average angle over all FHI-aims input logfiles
+#                is computed to estimate (fine-tune) theta0
+#                (use: fine_tune_theta0 True)
+#                -> this makes ONLY sense if geometrically optimized
+#                   structures have been used in FHI-aims input logfiles
+fine_tune_theta0 False
+#fine_tune_theta0 True
+
+# torsion (dihedral angles) terms are of form:
+#       (V1 / 2) * ( 1+cos(  phi) )
+#       (V2 / 2) * ( 1-cos(2*phi) )
+#       (V3 / 2) * ( 1+cos(3*phi) )
+# V1, V2, V3 = torsional parameters
+#      -> original FF parameters can be used (parameters not altered)
+#         (use: fine_tune_torsionalV False)
+#         OR parameters can be assigned using regression
+#            from energies of FHI-aims input logfiles
+#            (use: fine_tune_torsionalV Regression)
+fine_tune_torsionalV False
+#fine_tune_torsionalV Regression
+
+# only if fine_tune_torsionalV == Regression:
+# either ALL torsional parameters (V1, V2, V3) are considered in regrssion
+# (use: RegressionTorsionalVall True)
+#     OR only torsional parameters are considered that are non-zero in original FF
+#        (use: RegressionTorsionalVall False)
+# Note: cases for which V1 == V2 == V3 == 0 are never taken into account
+#       (those cases are usually quadruples that contain a hydrogen atom)
+#RegressionTorsionalVall False
+#RegressionTorsionalVall True
+
+# only if fine_tune_torsionalV == Regression:
+#   use linear regression
+#   OR Ridge regression
+#   OR Lasso regression
+#Regression_torsionalV_Method LinearRegression
+#Regression_torsionalV_Method Ridge
+#Regression_torsionalV_Method Lasso
+
+# only if fine_tune_torsionalV == Regression AND Regression_torsionalV_Method == {Ridge/Lasso}:
+# set regularization parameter
+#regularization_parameter_torsionalV 0.1
+
+# improper torsion terms are of form:
+#       (V2imp / 2) * ( 1-cos(2*phi) )
+# V2imp = improper torsional parameter
+#      -> original FF parameters are used (parameters not altered)
+
+# van der Waals (vdW; Lennard-Jones) terms are of form:
+#       4*epsilon * f * [ (sigma/r)**12 - (sigma/r)**6 ]
+#    {   0 for 1-2-interactions and 1-3-interactions
+# f ={ 1/2 for 1-4-interactions
+#    {   1 for 1-5-interactions and higher
+# sigma = distance parameter at which the inter-particle potential is zero
+#         -> original FF parameters can be used (parameters not altered)
+#            (use: fine_tune_sigma False)
+#            OR sigma is calculated from FHI-aims input logfiles
+#               using the Tkatchenko-Scheffler (TS) method
+#               (use: fine_tune_sigma TS)
+# epsilon = potential well depth parameter
+#         -> original FF parameters can be used (parameters not altered)
+#            (use: fine_tune_epsilon False)
+#            OR epsilon is calculated from FHI-aims input logfiles  
+#               using the Tkatchenko-Scheffler (TS) method          
+#               (use: fine_tune_epsilon TS)                         
+#            OR epsilon parameters can be assigned using regression
+#               from TS energies of FHI-aims input logfiles
+#               (use: fine_tune_epsilon RegressionTS)
+#            OR epsilon parameters can be assigned using regression
+#               from MBD@rsSCS energies of FHI-aims input logfiles
+#               (use: fine_tune_epsilon RegressionMBD)
+#            (Note: I don't know if the latter two options are even useful since both those
+#                   DFT energies are calculated using damping functions that in turn are
+#                   parameterized against individual exchange-correlation functionals)
+#            OR epsilon parameters can be assigned using regression
+#               from total energies of FHI-aims input logfiles
+#               (use: fine_tune_epsilon RegressionTot)
+fine_tune_sigma False
+#fine_tune_sigma TS
+fine_tune_epsilon False
+#fine_tune_epsilon TS
+#fine_tune_epsilon RegressionTS
+#fine_tune_epsilon RegressionMBD
+#fine_tune_epsilon RegressionTot
+
+# only if fine_tune_epsilon == Regression{TS/MBD/Tot}:
+#   use linear regression
+#   OR Ridge regression
+#   OR Lasso regression
+#RegressionEpsilonMethod LinearRegression
+#RegressionEpsilonMethod Ridge
+#RegressionEpsilonMethod Lasso
+
+# only if RegressionEpsilonMethod == {Ridge/Lasso}:
+# set regularization parameter
+#regularization_parameter_epsilon 0.1
+
+# only if fine_tune_epsilon == Regression{TS/MBD/Tot} AND RegressionEpsilonMethod == Lasso:
+#   restrict regression-fitted epsilon parameters to be positive
+#   (use: RestrictRegressionEpsilonPositive True)
+#   OR not (use: RestrictRegressionEpsilonPositive False)
+#RestrictRegressionEpsilonPositive False
+#RestrictRegressionEpsilonPositive True
+
+# only if fine_tune_{sigma/epsilon} == TS:
+#   some epsilon & sigma parameters might be zero in original FF
+#     -> Do you want to also set them explicitly to zero
+#        even if you (re-)calculate/assign them using TS?
+#        (use SetExplicitlyZero_vdW_SigmaEpsilon True)
+#        OR not (use: SetExplicitlyZero_vdW_SigmaEpsilon False)
+#SetExplicitlyZero_vdW_SigmaEpsilon False
+#SetExplicitlyZero_vdW_SigmaEpsilon True
+
+# Coulomb terms are of form: f * q1*q2 / r12
+#    {   0 for 1-2-interactions and 1-3-interactions
+# f ={ 1/2 for 1-4-interactions
+#    {   1 for 1-5-interactions and higher
+# q1,q2 = partial charge parameters of atoms
+#         -> original FF parameters can be used (parameters not altered)
+#            (use: fine_tune_charge False)
+#         OR partial charge parameters can be assigned using Hirshfeld charges
+#            from FHI-aims input logfiles
+#            (use: fine_tune_charge Hirshfeld)
+#         OR partial charge parameters can be assigned using ESP charges
+#            from FHI-aims input logfiles
+#            (use: fine_tune_charge ESP)
+fine_tune_charge False
+#fine_tune_charge Hirshfeld
+#fine_tune_charge ESP
+
