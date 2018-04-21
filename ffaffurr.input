@@ -154,3 +154,32 @@ fine_tune_charge False
 #fine_tune_charge Hirshfeld
 #fine_tune_charge ESP
 
+# Coulomb fudge factors are of form (in original OPLS-AA FF):
+#    {   0 for 1-2-interactions and 1-3-interactions
+# f ={ 1/2 for 1-4-interactions
+#    {   1 for 1-5-interactions and higher
+#   -> original fudge factors can be used (fudge factors not altered)
+#      (use: fine_tune_Coulomb_fudge_factors False)
+#   OR fudge factors can be assigned using linear regression
+#      from total energies of FHI-aims input logfiles
+#      (use: fine_tune_Coulomb_fudge_factors True)
+fine_tune_Coulomb_fudge_factors False
+#fine_tune_Coulomb_fudge_factors True
+
+# only if fine_tune_Coulomb_fudge_factors == True:
+# - general OPLS-AA form:
+#     Ecoul = (1/d) * ( f_14 * Ecoul(1-4) + f_15 * Ecoul(1-5) + Ecoul(1-6) )
+#       --> d    = dielectric constant (default: 1.0)
+#       --> f_14 = fudge factor for 1-4-interactions (default: 0.5)
+#       --> f_15 = fudge factor for 1-5-interactions (default: 1.0)
+# - TINKER has fudge factors for 1-4-interactions and for 1-5-interactions implemented
+# - TINKER doesn't have a fudge factor for 1-6-interactions and higher implemented,
+#   BUT the dielectric constant d can be used to "resemble"
+#   a f_16plus fudge factor for 1-6-interactions and higher
+# -> estimate f_14, f_15, and d
+#    (use: fine_tune_only_f14_and_f15 False)
+# OR estimate ONLY f_14 and f_15
+#    (use: fine_tune_only_f14_and_f15 True)
+#fine_tune_only_f14_and_f15 False
+#fine_tune_only_f14_and_f15 True
+

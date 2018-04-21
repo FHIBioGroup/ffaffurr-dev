@@ -230,6 +230,37 @@ def main():
     get_Coulomb_energies(newFF___pairs__charge)
 
 
+    # get Coulomb energy contributions per 1-X-interaction with newFF parameters
+    # -> terms are of form: q1*q2 / r12
+    get_Coulomb_energyContribsPer_1_X_interaction(newFF___pairs__charge)
+
+
+    # get vdW energies with origFF parameters
+    # -> van der Waals (vdW; Lennard-Jones) terms are of form:
+    #       4*epsilon * f * [ (sigma/r)**12 - (sigma/r)**6 ]
+    #            {   0 for 1-2-interactions and 1-3-interactions
+    #         f ={ 1/2 for 1-4-interactions
+    #            {   1 for 1-5-interactions and higher
+    get_vdW_energies(newFF___pairs__sigma, newFF___pairs__epsilon, 'Evdw_(origFF)')
+
+
+    # do regression for estimating fudge factors in Coulomb energies
+    f14 = 0.5 # default
+    f15 = 1.0 # default
+    dielectric = 1.0 # default
+    if ( dict_keywords['fine_tune_Coulomb_fudge_factors'] == True ):
+        f14, f15, dielectric = do_regression_Coulomb_fudge_factors() 
+        # reset Coulomb energies with new fudge factors
+        data['Ecoul_(FF)'] = (1./dielectric) * (   f14 * data['Ecoul_(FF)_14Intacts'] \
+                                                 + f15 * data['Ecoul_(FF)_15Intacts'] \
+                                                 +   data['Ecoul_(FF)_16plusIntacts'] )
+        
+
+#    with pandas.option_context('display.max_rows', 999, 'display.max_columns', 999):
+#        print(data.head())
+#        print(data)
+
+
     # get bonding energy contributions classpair-wise
     #   (not really useful at the moment but I put it in just for completeness
     #    and in case I need this function in the future for some reason)
@@ -284,12 +315,7 @@ def main():
     #            {   0 for 1-2-interactions and 1-3-interactions
     #         f ={ 1/2 for 1-4-interactions
     #            {   1 for 1-5-interactions and higher
-    get_vdW_energies(newFF___pairs__sigma, newFF___pairs__epsilon)
-
-
-#    with pandas.option_context('display.max_rows', 999, 'display.max_columns', 999):
-#        print(data.head())
-#        print(data)
+    get_vdW_energies(newFF___pairs__sigma, newFF___pairs__epsilon, 'Evdw_(FF)')
 
 
     # do regression to estimate torsional parameters (V1, V2, V3)
@@ -336,6 +362,9 @@ def main():
     # print original and new charge parameters type-wise
     print_charge_params(origFF___type__charge, newFF___type__charge)
 
+    # print original and new fudge factors
+    print_fudge_factors(f14, f15, dielectric)
+
 
     # write TINKER force field parameter file
     write_TINKER_ff_params_file(newFF___classpair__r0, \
@@ -348,7 +377,8 @@ def main():
                                  origFF___classquadruple__impV2, \
                                  newFF___typepairs__sigma, \
                                  newFF___typepairs__epsilon, \
-                                 newFF___type__charge)
+                                 newFF___type__charge, \
+                                 f14, f15, dielectric)
 
     print("========")
     print("Goodbye!"  )
@@ -487,6 +517,23 @@ def get_input():
         dict_keywords['fine_tune_charge'] = 'ESP'
     else:
         sys.exit('== Error: keyword \'fine_tune_charge\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
+
+    astring = get_input_loop_lines(lines, 'fine_tune_Coulomb_fudge_factors')
+    if astring in ['True', 'true']:
+        dict_keywords['fine_tune_Coulomb_fudge_factors'] = True
+    elif astring in ['False', 'false']:
+        dict_keywords['fine_tune_Coulomb_fudge_factors'] = False
+    else:
+        sys.exit('== Error: keyword \'fine_tune_Coulomb_fudge_factors\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
+
+    if ( dict_keywords['fine_tune_Coulomb_fudge_factors'] == True ):
+        astring = get_input_loop_lines(lines, 'fine_tune_only_f14_and_f15')
+        if astring in ['True', 'true']:
+            dict_keywords['fine_tune_only_f14_and_f15'] = True
+        elif astring in ['False', 'false']:
+            dict_keywords['fine_tune_only_f14_and_f15'] = False
+        else:
+            sys.exit('== Error: keyword \'fine_tune_only_f14_and_f15\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
 
     print('\n====\n')
 
@@ -1591,7 +1638,7 @@ def get_fhiaims_charges(logfile):
 
     # FIXBUG in FHI-aims
     # ESP charges are of opposite charge in some FHI-aims versions, please check
-#    if dict_keywords['fine_tune_charge'] == 'ESP': list_charges = [ -x for x in list_charges ]
+    if dict_keywords['fine_tune_charge'] == 'ESP': list_charges = [ -x for x in list_charges ]
 
     if len(list_charges) == 0:
         sys.exit('== Error: No charge information found in '+logfile+'. Exiting now...')
@@ -2136,7 +2183,7 @@ def get_improper_energies(classquadruple__impV2):
 #            {   1 for 1-5-interactions and higher
 ############################################################
 
-def get_vdW_energies(pairs__sigma, pairs__epsilon):
+def get_vdW_energies(pairs__sigma, pairs__epsilon, dataString):
 
     list_Evdw = []
 
@@ -2147,7 +2194,7 @@ def get_vdW_energies(pairs__sigma, pairs__epsilon):
         Evdw = get_vdW_energy(pairs__distances, pairs__sigma, pairs__epsilon)
         list_Evdw.append( Evdw )
 
-    data['Evdw_(FF)'] = list_Evdw
+    data[dataString] = list_Evdw
 
     return()
 
@@ -2173,6 +2220,49 @@ def get_Coulomb_energies(pairs__charge):
         list_Ecoul.append( Ecoul )
 
     data['Ecoul_(FF)'] = list_Ecoul
+
+    return()
+
+
+############################################################
+# get Coulomb energy contributions per 1-X-interaction with newFF parameters
+# -> terms of form: q1*q2 / r12
+############################################################
+
+def get_Coulomb_energyContribsPer_1_X_interaction(pairs__charge):
+
+    qqr2kcalpermole = 332.063714
+
+    list_Ecoul_14Intacts = []
+    list_Ecoul_15Intacts = []
+    list_Ecoul_16plusIntacts = []
+
+    for n_atom__xyz in listofdicts_logfiles___n_atom__xyz:
+
+        Ecoul_14Intacts = 0.
+        Ecoul_15Intacts = 0.
+        Ecoul_16plusIntacts = 0.
+
+        pairs__distances = get_distances(n_atom__xyz)
+
+        # 1-2- and 1-3-interactions are already excluded in pairs__charge dictionary
+        # (see function get_charge_pairs_params())
+        for pair,qq in pairs__charge.items():
+            r = pairs__distances[pair]
+            if pair in list_14_interacts:
+                Ecoul_14Intacts += qqr2kcalpermole * qq / r
+            elif pair in list_15_interacts:
+                Ecoul_15Intacts += qqr2kcalpermole * qq / r
+            else:
+                Ecoul_16plusIntacts += qqr2kcalpermole * qq / r
+
+        list_Ecoul_14Intacts.append(Ecoul_14Intacts)
+        list_Ecoul_15Intacts.append(Ecoul_15Intacts)
+        list_Ecoul_16plusIntacts.append(Ecoul_16plusIntacts)
+
+    data['Ecoul_(FF)_14Intacts'] = list_Ecoul_14Intacts
+    data['Ecoul_(FF)_15Intacts'] = list_Ecoul_15Intacts
+    data['Ecoul_(FF)_16plusIntacts'] = list_Ecoul_16plusIntacts
 
     return()
 
@@ -2490,6 +2580,96 @@ def get_vdWenergyContribs(pairs__sigma):
 
 
 ###############################################################################
+# do regression for total energy to estimate Coulomb fudge factors
+###############################################################################
+
+def do_regression_Coulomb_fudge_factors():
+
+    predictors = []
+
+    for colname in data:
+        if ( 'Ecoul_(FF)_14Intacts' in colname ):
+            predictors.append( colname )
+        if ( 'Ecoul_(FF)_15Intacts' in colname ):
+            predictors.append( colname )
+        if dict_keywords['fine_tune_only_f14_and_f15'] == False:
+            if ( 'Ecoul_(FF)_16plusIntacts' in colname ):
+                predictors.append( colname )
+
+    reg = LinearRegression(fit_intercept=True, normalize=False)
+
+    # note that the vdW energy of the origFF is used here
+    data['Ehl-EvdW-Etorsions-Eimprops-Eangles-Ebonds'] = data['E_high-level (Ehl)'] \
+                                                          - data['Evdw_(origFF)'] \
+                                                          - data['Etorsions_(FF)'] \
+                                                          - data['Eimprops_(FF)'] \
+                                                          - data['Eangles_(FF)'] \
+                                                          - data['Ebonds_(FF)']
+    data['Ehl-Ecoul16plusIntacts-EvdW-Etorsions-Eimprops-Eangles-Ebonds'] \
+            = data['Ehl-EvdW-Etorsions-Eimprops-Eangles-Ebonds'] - data['Ecoul_(FF)_16plusIntacts']
+
+    if dict_keywords['fine_tune_only_f14_and_f15'] == True:
+        reg.fit(data[predictors], data['Ehl-Ecoul16plusIntacts-EvdW-Etorsions-Eimprops-Eangles-Ebonds'])
+    elif dict_keywords['fine_tune_only_f14_and_f15'] == False:
+        reg.fit(data[predictors], data['Ehl-EvdW-Etorsions-Eimprops-Eangles-Ebonds'])
+
+    # get some infos
+    if False:
+        y_pred = reg.predict(data[predictors])
+        rss = sum( (y_pred-data['Ehl-EvdW-Etorsions-Eimprops-Eangles-Ebonds'])**2. )
+        print('RSS = ', rss)
+        print('intercept = ', reg.intercept_)
+        print('\n====\n')
+
+        #for i in range(len(reg.coef_)):
+        #    print(predictors[i], reg.coef_[i])
+
+    f14 = reg.coef_[0]
+    f15 = reg.coef_[1]
+    if dict_keywords['fine_tune_only_f14_and_f15'] == False:
+        f16plus = reg.coef_[2]
+    elif dict_keywords['fine_tune_only_f14_and_f15'] == True:
+        f16plus = 1.0 # default value
+
+    # get TINKER-coorect fudge factors and dielectric constant
+    dielectric = 1./f16plus
+    f14 = f14 * dielectric
+    f15 = f15 * dielectric
+
+    # write some info
+    print('Estimated Coulomb fudge factor for 1-4-interactions: '+format(f14, '.3f'))
+    print('Estimated Coulomb fudge factor for 1-5-interactions: '+format(f15, '.3f'))
+    if dict_keywords['fine_tune_only_f14_and_f15'] == False:
+        print('Estimated Coulomb fudge factor for 1-6-interactions or higher: '+format(f16plus, '.3f'))
+    print('\n====\n')
+
+    if ( f14 < 0. ):
+        print('Estimated Coulomb fudge factor for 1-4-interactions: '+format(f14, '.3f'))
+        sys.exit('== Error: Estimated Coulomb fudge factor for 1-4-interactions is negative. That seems strange. Exiting now...')
+    if ( f15 < 0. ):
+        print('Estimated Coulomb fudge factor for 1-5-interactions: '+format(f15, '.3f'))
+        sys.exit('== Error: Estimated Coulomb fudge factor for 1-5-interactions is negative. That seems strange. Exiting now...')
+    if ( f16plus < 0. ):
+        print('Estimated Coulomb fudge factor for 1-6-interactions or higher: '+format(f16plus, '.3f'))
+        sys.exit('== Error: Estimated Coulomb fudge factor for 1-6-interactions or higher is negative. That seems strange. Exiting now...')
+
+    if ( f14 > 1.0 ):
+        print('Warning! TINKER only uses fudge factors that do not exceed values of 1.0')
+        print('         Estimated Coulomb fudge factor for 1-4-interactions: '+format(f14, '.3f'))
+        print('         --> Reset to 1.0')
+        print('\n====\n')
+        f14 = 1.0
+    if ( f15 > 1.0 ):
+        print('Warning! TINKER only uses fudge factors that do not exceed values of 1.0')
+        print('         Estimated Coulomb fudge factor for 1-5-interactions: '+format(f15, '.3f'))
+        print('         --> Reset to 1.0')
+        print('\n====\n')
+        f15 = 1.0
+
+    return(f14, f15, dielectric)
+
+
+###############################################################################
 # do regression for vdW energy (TS or MBD) to estimate epsilon parameters
 ###############################################################################
 
@@ -2659,11 +2839,11 @@ def do_regression_torsionalV():
     reg.fit(data[predictors], data['Ehl-Ecoul-Evdw-Eimprops-Eangles-Ebonds'])
 
     # get some infos
-    if True:
+    if False:
         y_pred = reg.predict(data[predictors])
         rss = sum( (y_pred-data['Ehl-Ecoul-Evdw-Eimprops-Eangles-Ebonds'])**2. )
-#        print('RSS = ', rss)
-#        print('\n====\n')
+        print('RSS = ', rss)
+        print('\n====\n')
 #        print('intercept = ', reg.intercept_)
 
         #for i in range(len(reg.coef_)):
@@ -3112,6 +3292,36 @@ def print_charge_params(origFF___type__charge, newFF___type__charge):
 
 
 ############################################################
+# print original and new fudge factors
+############################################################
+
+def print_fudge_factors(f14, f15, dielectric):
+
+    print('Fudge factors:')
+    print('--------------')
+    print('              ')
+
+    if dict_keywords['fine_tune_Coulomb_fudge_factors'] == False:
+        print('>>> Original Coulomb fudge factors have been used for new FF, i.e. fudge factors have not been altered.')
+    elif dict_keywords['fine_tune_Coulomb_fudge_factors'] == True:
+        print('>>> Fudge factors have been assigned using linear regression from total energies.')
+        if dict_keywords['fine_tune_only_f14_and_f15'] == True:
+            print('  >> Only fudge factors for 1-4-interactions and 1-5-interactions have been altered.')
+        elif dict_keywords['fine_tune_only_f14_and_f15'] == False:
+            print('  >> In addition to the fudge factors for 1-4-interactions and 1-5-interactions, the fudge factor for 1-6-interactions or higher has been altered as well by making use of the dielectric constant.')
+
+    print('                  ')
+    print('   Fudge factor     origFF      newFF')
+    print('-------------------------------------')
+    printf('            f14      0.500    %7.3f\n', f14)
+    printf('            f15      1.000    %7.3f\n', f15)
+    printf('        f16plus      1.000    %7.3f\n', 1./dielectric)
+    printf('     dielectric      1.000    %7.3f   ... dielectric = 1 / f16plus\n', dielectric)
+
+    print('\n====\n')
+
+
+############################################################
 ############################################################
 
 def write_TINKER_ff_params_file(newFF___classpair__r0, \
@@ -3124,7 +3334,8 @@ def write_TINKER_ff_params_file(newFF___classpair__r0, \
                                  origFF___classquadruple__impV2, \
                                  newFF___typepairs__sigma, \
                                  newFF___typepairs__epsilon, \
-                                 newFF___type__charge):
+                                 newFF___type__charge, \
+                                 f14, f15, dielectric):
 
     FFfile = open("oplsaa-ffaffurr.prm", 'w')
 
@@ -3146,10 +3357,14 @@ radiussize              DIAMETER
 epsilonrule             GEOMETRIC
 torsionunit             0.5
 imptorunit              0.5
-vdw-14-scale            2.0
-chg-14-scale            2.0
+vdw-14-scale            0.5\n""")
+
+    FFfile.write("chg-14-scale            %.3f\n" % f14)
+    FFfile.write("chg-15-scale            %.3f\n" % f15)
+    FFfile.write("dielectric              %.3f\n" % dielectric)
+
+    FFfile.write("""
 electric                332.06
-dielectric              1.0
 
 
       #############################
