@@ -14,8 +14,8 @@
 #            (use: fine_tune_r0 True)
 #            -> this makes ONLY sense if geometrically optimized
 #               structures have been used in high-level input logfiles
-fine_tune_r0 False
-#fine_tune_r0 True
+#fine_tune_r0 False
+fine_tune_r0 True
 
 # angles bending terms are of form: Ktheta * (theta-theta0)**2
 # ktheta = spring constant parameter
@@ -29,8 +29,8 @@ fine_tune_r0 False
 #                (use: fine_tune_theta0 True)
 #                -> this makes ONLY sense if geometrically optimized
 #                   structures have been used in FHI-aims input logfiles
-fine_tune_theta0 False
-#fine_tune_theta0 True
+#fine_tune_theta0 False
+fine_tune_theta0 True
 
 # torsion (dihedral angles) terms are of form:
 #       (V1 / 2) * ( 1+cos(  phi) )
@@ -42,8 +42,8 @@ fine_tune_theta0 False
 #         OR parameters can be assigned using regression
 #            from energies of FHI-aims input logfiles
 #            (use: fine_tune_torsionalV Regression)
-fine_tune_torsionalV False
-#fine_tune_torsionalV Regression
+#fine_tune_torsionalV False
+fine_tune_torsionalV Regression
 
 # only if fine_tune_torsionalV == Regression:
 # either ALL torsional parameters (V1, V2, V3) are considered in regrssion
@@ -53,19 +53,19 @@ fine_tune_torsionalV False
 # Note: cases for which V1 == V2 == V3 == 0 are never taken into account
 #       (those cases are usually quadruples that contain a hydrogen atom)
 #RegressionTorsionalVall False
-#RegressionTorsionalVall True
+RegressionTorsionalVall True
 
 # only if fine_tune_torsionalV == Regression:
 #   use linear regression
 #   OR Ridge regression
 #   OR Lasso regression
 #Regression_torsionalV_Method LinearRegression
-#Regression_torsionalV_Method Ridge
+Regression_torsionalV_Method Ridge
 #Regression_torsionalV_Method Lasso
 
 # only if fine_tune_torsionalV == Regression AND Regression_torsionalV_Method == {Ridge/Lasso}:
 # set regularization parameter
-#regularization_parameter_torsionalV 0.1
+regularization_parameter_torsionalV 0.16
 
 # improper torsion terms are of form:
 #       (V2imp / 2) * ( 1-cos(2*phi) )
@@ -101,11 +101,11 @@ fine_tune_torsionalV False
 #            OR epsilon parameters can be assigned using regression
 #               from total energies of FHI-aims input logfiles
 #               (use: fine_tune_epsilon RegressionTot)
-fine_tune_sigma False
-#fine_tune_sigma TS
-fine_tune_epsilon False
+#fine_tune_sigma False
+fine_tune_sigma TS
+#fine_tune_epsilon False
 #fine_tune_epsilon TS
-#fine_tune_epsilon RegressionTS
+fine_tune_epsilon RegressionTS
 #fine_tune_epsilon RegressionMBD
 #fine_tune_epsilon RegressionTot
 
@@ -115,18 +115,18 @@ fine_tune_epsilon False
 #   OR Lasso regression
 #RegressionEpsilonMethod LinearRegression
 #RegressionEpsilonMethod Ridge
-#RegressionEpsilonMethod Lasso
+RegressionEpsilonMethod Lasso
 
 # only if RegressionEpsilonMethod == {Ridge/Lasso}:
 # set regularization parameter
-#regularization_parameter_epsilon 0.1
+regularization_parameter_epsilon 0.0002
 
 # only if fine_tune_epsilon == Regression{TS/MBD/Tot} AND RegressionEpsilonMethod == Lasso:
 #   restrict regression-fitted epsilon parameters to be positive
 #   (use: RestrictRegressionEpsilonPositive True)
 #   OR not (use: RestrictRegressionEpsilonPositive False)
 #RestrictRegressionEpsilonPositive False
-#RestrictRegressionEpsilonPositive True
+RestrictRegressionEpsilonPositive True
 
 # only if fine_tune_{sigma/epsilon} == TS:
 #   some epsilon & sigma parameters might be zero in original FF
@@ -134,7 +134,7 @@ fine_tune_epsilon False
 #        even if you (re-)calculate/assign them using TS?
 #        (use SetExplicitlyZero_vdW_SigmaEpsilon True)
 #        OR not (use: SetExplicitlyZero_vdW_SigmaEpsilon False)
-#SetExplicitlyZero_vdW_SigmaEpsilon False
+SetExplicitlyZero_vdW_SigmaEpsilon False
 #SetExplicitlyZero_vdW_SigmaEpsilon True
 
 # Coulomb terms are of form: f * q1*q2 / r12
@@ -153,6 +153,7 @@ fine_tune_epsilon False
 fine_tune_charge False
 #fine_tune_charge Hirshfeld
 #fine_tune_charge ESP
+#fine_tune_charge RESP
 
 # Coulomb fudge factors are of form (in original OPLS-AA FF):
 #    {   0 for 1-2-interactions and 1-3-interactions
@@ -181,5 +182,5 @@ fine_tune_Coulomb_fudge_factors False
 # OR estimate ONLY f_14 and f_15
 #    (use: fine_tune_only_f14_and_f15 True)
 #fine_tune_only_f14_and_f15 False
-#fine_tune_only_f14_and_f15 True
+fine_tune_only_f14_and_f15 True
 

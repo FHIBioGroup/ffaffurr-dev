@@ -145,7 +145,7 @@ def main():
     # fine-tune partial charge (or not)
     if dict_keywords['fine_tune_charge'] == 'False':
         newFF___type__charge = copy.deepcopy(origFF___type__charge)
-    elif ( dict_keywords['fine_tune_charge'] == 'Hirshfeld' ) or ( dict_keywords['fine_tune_charge'] == 'ESP' ):
+    elif ( dict_keywords['fine_tune_charge'] == 'Hirshfeld' ) or ( dict_keywords['fine_tune_charge'] == 'ESP') or ( dict_keywords['fine_tune_charge'] == 'RESP') :
         newFF___type__charge = get_average_charge()
 
     # get pair-wise charge parameters (new FF) for Coulomb interactions
@@ -241,7 +241,7 @@ def main():
     #            {   0 for 1-2-interactions and 1-3-interactions
     #         f ={ 1/2 for 1-4-interactions
     #            {   1 for 1-5-interactions and higher
-    get_vdW_energies(newFF___pairs__sigma, newFF___pairs__epsilon, 'Evdw_(origFF)')
+    #get_vdW_energies(newFF___pairs__sigma, newFF___pairs__epsilon, 'Evdw_(origFF)')
 
 
     # do regression for estimating fudge factors in Coulomb energies
@@ -515,6 +515,8 @@ def get_input():
         dict_keywords['fine_tune_charge'] = 'Hirshfeld'
     elif astring in ['ESP', 'esp']:
         dict_keywords['fine_tune_charge'] = 'ESP'
+    elif astring in ['RESP', 'resp']:
+        dict_keywords['fine_tune_charge'] = 'RESP'
     else:
         sys.exit('== Error: keyword \'fine_tune_charge\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
 
@@ -1617,36 +1619,49 @@ def get_average_charge():
 
 def get_fhiaims_charges(logfile):
 
-    # read logfile
-    in_file = open(logfile, 'r')
-    file_lines = in_file.readlines()
-    lines = list(file_lines)
-    in_file.close()
-
     n_atom__charges = {}
-
-    if dict_keywords['fine_tune_charge'] == 'Hirshfeld':
-        string = '|   Hirshfeld charge        :'
-    elif dict_keywords['fine_tune_charge'] == 'ESP':
-        string = 'ESP charge:'
-
     list_charges = []
-    for line in lines:
-        if string in line:
-            charge = float(line.rsplit(None, 1)[-1])
-            list_charges.append( charge )
-
-    # FIXBUG in FHI-aims
-    # ESP charges are of opposite charge in some FHI-aims versions, please check
-    if dict_keywords['fine_tune_charge'] == 'ESP': list_charges = [ -x for x in list_charges ]
-
-    if len(list_charges) == 0:
-        sys.exit('== Error: No charge information found in '+logfile+'. Exiting now...')
-    elif len(list_charges) > n_atoms:
-        sys.exit('== Error in '+logfile+': Too much charge information found. Single point energy calculations only! Exiting now...')
-    else:
-        for i in range(n_atoms):
-            n_atom__charges[i+1] = list_charges[i]
+    
+    if dict_keywords['fine_tune_charge'] == 'RESP':
+        little_path = logfile.rsplit('/',1)[0]
+        
+        #read respfile
+        with open(os.path.join(little_path, 'resp.chrg'), 'r') as respfile:
+            resp_lines = respfile.readlines()
+            
+        for i in resp_lines:
+            list_charges.append(float(i))
+    else:        
+        # read logfile
+        in_file = open(logfile, 'r')
+        file_lines = in_file.readlines()
+        lines = list(file_lines)
+        in_file.close()
+        
+        
+        if dict_keywords['fine_tune_charge'] == 'Hirshfeld':
+            string = '|   Hirshfeld charge        :'
+        elif dict_keywords['fine_tune_charge'] == 'ESP':
+            string = 'ESP charge:'
+        
+        list_charges = []
+        for line in lines:
+            if string in line:
+                charge = float(line.rsplit(None, 1)[-1])
+                list_charges.append( charge )
+        
+        # FIXBUG in FHI-aims
+        # ESP charges are of opposite charge in some FHI-aims versions, please check
+#        if dict_keywords['fine_tune_charge'] == 'ESP': list_charges = [ -x for x in list_charges ]
+        
+        if len(list_charges) == 0:
+            sys.exit('== Error: No charge information found in '+logfile+'. Exiting now...')
+        elif len(list_charges) > n_atoms:
+#            sys.exit('== Error in '+logfile+': Too much charge information found. Single point energy calculations only! Exiting now...')
+            list_charges = list_charges[-n_atoms:]
+#        else:
+    for i in range(n_atoms):
+        n_atom__charges[i+1] = list_charges[i]
 
     return(n_atom__charges)
 
@@ -1821,11 +1836,13 @@ def get_fhiaims_hirshfeld_volume(logfile):
     if ( len(alist_free_atom_volumes) == 0 ) or ( len(alist_hirshfeld_volumes) == 0 ):
         sys.exit('== Error: No hirshfeld volume information found in '+logfile+'. Exiting now...')
     elif ( len(alist_free_atom_volumes) > n_atoms ) or ( len(alist_hirshfeld_volumes) > n_atoms ):
-        sys.exit('== Error in '+logfile+': Too many hirshfeld volume information found. Single-point energy calculations only! Exiting now...')
-    else:
-        for i in range(n_atoms):
-            n_atom__free_atom_volume[i+1] = alist_free_atom_volumes[i]
-            n_atom__hirshfeld_volume[i+1] = alist_hirshfeld_volumes[i]
+        alist_free_atom_volumes = alist_free_atom_volumes[-n_atoms:]
+        alist_hirshfeld_volumes = alist_hirshfeld_volumes[-n_atoms:]
+        #sys.exit('== Error in '+logfile+': Too many hirshfeld volume information found. Single-point energy calculations only! Exiting now...')
+    #else:
+    for i in range(n_atoms):
+        n_atom__free_atom_volume[i+1] = alist_free_atom_volumes[i]
+        n_atom__hirshfeld_volume[i+1] = alist_hirshfeld_volumes[i]
 
     return(n_atom__free_atom_volume, n_atom__hirshfeld_volume)
 
@@ -3260,6 +3277,8 @@ def print_charge_params(origFF___type__charge, newFF___type__charge):
         print('>>> Partial charge parameters have been assigned using Hirshfeld charges.')
     elif dict_keywords['fine_tune_charge'] == 'ESP':
         print('>>> Partial charge parameters have been assigned using ESP charges.')
+    elif dict_keywords['fine_tune_charge'] == 'RESP':
+        print('>>> Partial charge parameters have been assigned using RESP charges.')
 
     print('                  ')
     print('   Atom type   Charge q   Charge q   Corresponding atoms')
