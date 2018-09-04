@@ -2,6 +2,10 @@
 # General input file 'ffaffurr.input' #
 #######################################
 
+#Read paramters from oplsaa-ffaffurr.prm.This is used to optimize parameters step by step.
+readparamsfromffaffurr False
+#readparamsfromffaffurr True
+
 # bonding terms are of form: kB * (r-r0)**2
 # kB = spring constant parameter
 #      -> original FF parameters are used
@@ -14,8 +18,8 @@
 #            (use: fine_tune_r0 True)
 #            -> this makes ONLY sense if geometrically optimized
 #               structures have been used in high-level input logfiles
-#fine_tune_r0 False
-fine_tune_r0 True
+fine_tune_r0 False
+#fine_tune_r0 True
 
 # angles bending terms are of form: Ktheta * (theta-theta0)**2
 # ktheta = spring constant parameter
@@ -29,8 +33,8 @@ fine_tune_r0 True
 #                (use: fine_tune_theta0 True)
 #                -> this makes ONLY sense if geometrically optimized
 #                   structures have been used in FHI-aims input logfiles
-#fine_tune_theta0 False
-fine_tune_theta0 True
+fine_tune_theta0 False
+#fine_tune_theta0 True
 
 # torsion (dihedral angles) terms are of form:
 #       (V1 / 2) * ( 1+cos(  phi) )
@@ -42,8 +46,8 @@ fine_tune_theta0 True
 #         OR parameters can be assigned using regression
 #            from energies of FHI-aims input logfiles
 #            (use: fine_tune_torsionalV Regression)
-#fine_tune_torsionalV False
-fine_tune_torsionalV Regression
+fine_tune_torsionalV False
+#fine_tune_torsionalV Regression
 
 # only if fine_tune_torsionalV == Regression:
 # either ALL torsional parameters (V1, V2, V3) are considered in regrssion
@@ -65,7 +69,7 @@ Regression_torsionalV_Method Ridge
 
 # only if fine_tune_torsionalV == Regression AND Regression_torsionalV_Method == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_torsionalV 0.16
+regularization_parameter_torsionalV 4.000000
 
 # improper torsion terms are of form:
 #       (V2imp / 2) * ( 1-cos(2*phi) )
@@ -101,11 +105,11 @@ regularization_parameter_torsionalV 0.16
 #            OR epsilon parameters can be assigned using regression
 #               from total energies of FHI-aims input logfiles
 #               (use: fine_tune_epsilon RegressionTot)
-#fine_tune_sigma False
-fine_tune_sigma TS
-#fine_tune_epsilon False
+fine_tune_sigma False
+#fine_tune_sigma TS
+fine_tune_epsilon False
 #fine_tune_epsilon TS
-fine_tune_epsilon RegressionTS
+#fine_tune_epsilon RegressionTS
 #fine_tune_epsilon RegressionMBD
 #fine_tune_epsilon RegressionTot
 
@@ -119,7 +123,7 @@ RegressionEpsilonMethod Lasso
 
 # only if RegressionEpsilonMethod == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_epsilon 0.0002
+regularization_parameter_epsilon 0.01
 
 # only if fine_tune_epsilon == Regression{TS/MBD/Tot} AND RegressionEpsilonMethod == Lasso:
 #   restrict regression-fitted epsilon parameters to be positive

@@ -404,6 +404,14 @@ def get_input():
     in_file.close()
 
     dict_keywords = {}
+    
+    astring = get_input_loop_lines(lines, 'readparamsfromffaffurr')
+    if astring in ['True', 'true']:
+        dict_keywords['readparamsfromffaffurr'] = True
+    elif astring in ['False', 'false']:
+        dict_keywords['readparamsfromffaffurr'] = False
+    else:
+        sys.exit('== Error: keyword \'readparamsfromffaffurr\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
 
     astring = get_input_loop_lines(lines, 'fine_tune_r0')
     if astring in ['True', 'true']:
@@ -740,131 +748,200 @@ def get_originalFF_AllFFparams(lines, n_atoms, n_bonds, n_angles, n_torsions, n_
         class__valence[int(cclass)] = int(valence)
         n_atom__description[int(n_atom)] = str(description)
         type__description[int(ttype)] = str(description).rstrip()
-
-    lines_position = lines.index(' Atomic Partial Charge Parameters :\n')
-    for line in lines[lines_position+4:lines_position+4+n_atoms]:
-        n_atom, number, charge = line.split(None, 2)
-        type__charge[n_atom__type[int(n_atom)]] = float(charge)
-
-    lines_position = lines.index(' Van der Waals Parameters :\n')
-    for line in lines[lines_position+4:lines_position+4+n_atoms]:
-        n_atom, number, sigma, epsilon = line.split(None, 3)
-        type__sigma[n_atom__type[int(n_atom)]] = float(sigma)
-        type__epsilon[n_atom__type[int(n_atom)]] = float(epsilon)
-
-    lines_position = lines.index(' Bond Stretching Parameters :\n')
-    for line in lines[lines_position+4:lines_position+4+n_bonds]:
-        n_bond, n_atom1, n_atom2, Kb, r0 = line.split(None, 4)
-        if n_atom__class[int(n_atom1)] <= n_atom__class[int(n_atom2)]:
-            aclasspair = ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)] )
-        else:
-            aclasspair = ( n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] )
-        classpair__Kb[ aclasspair ] = float(Kb)
-        classpair__r0[ aclasspair ] = float(r0)
-
+        
     lines_position = lines.index(' Angle Bending Parameters :\n')
     for line in lines[lines_position+4:lines_position+4+n_angles]:
         n_angle, n_atom1, n_atom2, n_atom3, Ktheta, theta0 = line.split(None, 5)
-        if n_atom__class[int(n_atom1)] <= n_atom__class[int(n_atom3)]:
-            aclasstriple = ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)] )
-        else:
-            aclasstriple = ( n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] )
-        classtriple__Ktheta[ aclasstriple ] = float(Ktheta)
-        classtriple__theta0[ aclasstriple ] = float(theta0)
         # int(n_atom1) <= int(n_atom3) always (property of TINKER)
         atuple = (int(n_atom1),int(n_atom2),int(n_atom3))
         list_123_interacts.append( atuple )
-
+        
     lines_position = lines.index(' Torsional Angle Parameters :\n')
     for line in lines[lines_position+4:lines_position+4+n_torsions]:
         if len(line.split()) == 5:
             n_torsion, n_atom1, n_atom2, n_atom3, n_atom4 = line.split(None, 4)
         elif len(line.split()) == 7:
             n_torsion, n_atom1, n_atom2, n_atom3, n_atom4, V, phasestring = line.split(None, 6)
-            if phasestring == '0/1' or phasestring == '0/1\n':
-                if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
-                    classquadruple__V1[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(V)
-                else:
-                    classquadruple__V1[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(V)
-            elif phasestring == '180/2' or phasestring == '180/2\n':
-                if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
-                    classquadruple__V2[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(V)
-                else:
-                    classquadruple__V2[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(V)
-            elif phasestring == '0/3' or phasestring == '0/3\n':
-                if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
-                    classquadruple__V3[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(V)
-                else:
-                    classquadruple__V3[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(V)
         elif len(line.split()) == 9:
             n_torsion, n_atom1, n_atom2, n_atom3, n_atom4, Va, phasestringa, Vb, phasestringb = line.split(None, 8)
-            if phasestringa == '0/1' or phasestringa == '0/1\n':
-                if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
-                    classquadruple__V1[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Va)
-                else:
-                    classquadruple__V1[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Va)
-            elif phasestringa == '180/2' or phasestringa == '180/2\n':
-                if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
-                    classquadruple__V2[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Va)
-                else:
-                    classquadruple__V2[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Va)
-            elif phasestringa == '0/3' or phasestringa == '0/3\n':
-                if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
-                    classquadruple__V3[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Va)
-                else:
-                    classquadruple__V3[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Va)
-            if phasestringb == '180/2' or phasestringb == '180/2\n':
-                if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
-                    classquadruple__V2[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Vb)
-                else:
-                    classquadruple__V2[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Vb)
-            elif phasestringb == '0/3' or phasestringb == '0/3\n':
-                if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
-                    classquadruple__V3[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Vb)
-                else:
-                    classquadruple__V3[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Vb)
         elif len(line.split()) == 11:
             n_torsion, n_atom1, n_atom2, n_atom3, n_atom4, Va, phasestringa, Vb, phasestringb, Vc, phasestringc = line.split(None, 10)
-            if phasestringa == '0/1' or phasestringa == '0/1\n':
-                if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
-                    classquadruple__V1[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Va)
-                else:
-                    classquadruple__V1[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Va)
-            elif phasestringa == '180/2' or phasestringa == '180/2\n':
-                if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
-                    classquadruple__V2[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Va)
-                else:
-                    classquadruple__V2[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Va)
-            elif phasestringa == '0/3' or phasestringa == '0/3\n':
-                if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
-                    classquadruple__V3[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Va)
-                else:
-                    classquadruple__V3[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Va)
-            if phasestringb == '180/2' or phasestringb == '180/2\n':
-                if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
-                    classquadruple__V2[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Vb)
-                else:
-                    classquadruple__V2[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Vb)
-            elif phasestringb == '0/3' or phasestringb == '0/3\n':
-                if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
-                    classquadruple__V3[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Vb)
-                else:
-                    classquadruple__V3[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Vb)
-            if phasestringc == '0/3' or phasestringc == '0/3\n': # always true
-                if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
-                    classquadruple__V3[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Vc)
-                else:
-                    classquadruple__V3[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Vc)
         # int(n_atom2) <= int(n_atom3) always (property of TINKER)
         atuple = (int(n_atom1),int(n_atom2),int(n_atom3),int(n_atom4))
         list_1234_interacts.append( atuple )
-
+    
     lines_position = lines.index(' Improper Torsion Parameters :\n')
     for line in lines[lines_position+4:lines_position+4+n_improps]:
         n_improp, n_atom1, n_atom2, n_atom3, n_atom4, impV2, phase, periodicity = line.split(None, 7)
-        classquadruple__impV2[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(impV2)
         atuple = (int(n_atom1),int(n_atom2),int(n_atom3),int(n_atom4))
         list_imp1234_interacts.append( atuple )
+        
+    if dict_keywords['readparamsfromffaffurr'] == False:
+		    
+        lines_position = lines.index(' Atomic Partial Charge Parameters :\n')
+        for line in lines[lines_position+4:lines_position+4+n_atoms]:
+            n_atom, number, charge = line.split(None, 2)
+            type__charge[n_atom__type[int(n_atom)]] = float(charge)
+        
+        lines_position = lines.index(' Van der Waals Parameters :\n')
+        for line in lines[lines_position+4:lines_position+4+n_atoms]:
+            n_atom, number, sigma, epsilon = line.split(None, 3)
+            type__sigma[n_atom__type[int(n_atom)]] = float(sigma)
+            type__epsilon[n_atom__type[int(n_atom)]] = float(epsilon)
+        
+        lines_position = lines.index(' Bond Stretching Parameters :\n')
+        for line in lines[lines_position+4:lines_position+4+n_bonds]:
+            n_bond, n_atom1, n_atom2, Kb, r0 = line.split(None, 4)
+            if n_atom__class[int(n_atom1)] <= n_atom__class[int(n_atom2)]:
+                aclasspair = ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)] )
+            else:
+                aclasspair = ( n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] )
+            classpair__Kb[ aclasspair ] = float(Kb)
+            classpair__r0[ aclasspair ] = float(r0)
+        
+        lines_position = lines.index(' Angle Bending Parameters :\n')
+        for line in lines[lines_position+4:lines_position+4+n_angles]:
+            n_angle, n_atom1, n_atom2, n_atom3, Ktheta, theta0 = line.split(None, 5)
+            if n_atom__class[int(n_atom1)] <= n_atom__class[int(n_atom3)]:
+                aclasstriple = ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)] )
+            else:
+                aclasstriple = ( n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] )
+            classtriple__Ktheta[ aclasstriple ] = float(Ktheta)
+            classtriple__theta0[ aclasstriple ] = float(theta0)
+        
+        lines_position = lines.index(' Torsional Angle Parameters :\n')
+        for line in lines[lines_position+4:lines_position+4+n_torsions]:
+            if len(line.split()) == 5:
+                n_torsion, n_atom1, n_atom2, n_atom3, n_atom4 = line.split(None, 4)
+            elif len(line.split()) == 7:
+                n_torsion, n_atom1, n_atom2, n_atom3, n_atom4, V, phasestring = line.split(None, 6)
+                if phasestring == '0/1' or phasestring == '0/1\n':
+                    if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
+                        classquadruple__V1[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(V)
+                    else:
+                        classquadruple__V1[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(V)
+                elif phasestring == '180/2' or phasestring == '180/2\n':
+                    if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
+                        classquadruple__V2[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(V)
+                    else:
+                        classquadruple__V2[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(V)
+                elif phasestring == '0/3' or phasestring == '0/3\n':
+                    if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
+                        classquadruple__V3[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(V)
+                    else:
+                        classquadruple__V3[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(V)
+            elif len(line.split()) == 9:
+                n_torsion, n_atom1, n_atom2, n_atom3, n_atom4, Va, phasestringa, Vb, phasestringb = line.split(None, 8)
+                if phasestringa == '0/1' or phasestringa == '0/1\n':
+                    if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
+                        classquadruple__V1[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Va)
+                    else:
+                        classquadruple__V1[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Va)
+                elif phasestringa == '180/2' or phasestringa == '180/2\n':
+                    if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
+                        classquadruple__V2[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Va)
+                    else:
+                        classquadruple__V2[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Va)
+                elif phasestringa == '0/3' or phasestringa == '0/3\n':
+                    if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
+                        classquadruple__V3[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Va)
+                    else:
+                        classquadruple__V3[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Va)
+                if phasestringb == '180/2' or phasestringb == '180/2\n':
+                    if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
+                        classquadruple__V2[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Vb)
+                    else:
+                        classquadruple__V2[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Vb)
+                elif phasestringb == '0/3' or phasestringb == '0/3\n':
+                    if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
+                        classquadruple__V3[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Vb)
+                    else:
+                        classquadruple__V3[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Vb)
+            elif len(line.split()) == 11:
+                n_torsion, n_atom1, n_atom2, n_atom3, n_atom4, Va, phasestringa, Vb, phasestringb, Vc, phasestringc = line.split(None, 10)
+                if phasestringa == '0/1' or phasestringa == '0/1\n':
+                    if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
+                        classquadruple__V1[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Va)
+                    else:
+                        classquadruple__V1[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Va)
+                elif phasestringa == '180/2' or phasestringa == '180/2\n':
+                    if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
+                        classquadruple__V2[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Va)
+                    else:
+                        classquadruple__V2[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Va)
+                elif phasestringa == '0/3' or phasestringa == '0/3\n':
+                    if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
+                        classquadruple__V3[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Va)
+                    else:
+                        classquadruple__V3[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Va)
+                if phasestringb == '180/2' or phasestringb == '180/2\n':
+                    if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
+                        classquadruple__V2[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Vb)
+                    else:
+                        classquadruple__V2[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Vb)
+                elif phasestringb == '0/3' or phasestringb == '0/3\n':
+                    if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
+                        classquadruple__V3[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Vb)
+                    else:
+                        classquadruple__V3[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Vb)
+                if phasestringc == '0/3' or phasestringc == '0/3\n': # always true
+                    if n_atom__class[int(n_atom2)] <= n_atom__class[int(n_atom3)]:
+                        classquadruple__V3[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(Vc)
+                    else:
+                        classquadruple__V3[ ( n_atom__class[int(n_atom4)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom1)] ) ] = float(Vc)
+        
+        lines_position = lines.index(' Improper Torsion Parameters :\n')
+        for line in lines[lines_position+4:lines_position+4+n_improps]:
+            n_improp, n_atom1, n_atom2, n_atom3, n_atom4, impV2, phase, periodicity = line.split(None, 7)
+            classquadruple__impV2[ ( n_atom__class[int(n_atom1)],n_atom__class[int(n_atom2)],n_atom__class[int(n_atom3)],n_atom__class[int(n_atom4)] ) ] = float(impV2)
+            
+    elif dict_keywords['readparamsfromffaffurr'] == True:
+		# check if file is there
+        if not os.path.exists('oplsaa-ffaffurr.prm'):
+            sys.exit('== Error: Input file \'oplsaa-ffaffurr.prm\' does not exist. Exiting now...')
+        else:
+            print('Now reading from input file \'oplsaa-ffaffurr.prm\'...')
+        
+        # read file
+        in_file_ffaffurr = open("oplsaa-ffaffurr.prm", 'r')
+        file_lines_ffaffurr = in_file_ffaffurr.readlines()
+        lines_ffaffurr = list(file_lines_ffaffurr)
+        in_file_ffaffurr.close()
+        
+        lines_position = lines_ffaffurr.index('      ##  Atomic Partial Charge Parameters  ##\n')
+        for line in lines_ffaffurr[lines_position+5:]:
+            stringa, atomtype, charge = line.split(None, 2)
+            type__charge[int(atomtype)] = float(charge)
+            
+        lines_position_1 = lines_ffaffurr.index('      ##  Bond Stretching Parameters  ##\n')
+        lines_position_2 = lines_ffaffurr.index('      ##  Angle Bending Parameters  ##\n')
+        for line in lines_ffaffurr[lines_position_1+5:lines_position_2-4]:
+            stringa, atomclass1, atomclass2, Kb, r0 = line.split(None, 4)
+            aclasspair = ( int(atomclass1), int(atomclass2) )
+            classpair__Kb[ aclasspair ] = float(Kb)
+            classpair__r0[ aclasspair ] = float(r0)
+            
+        lines_position_3 = lines_ffaffurr.index('      ##  Improper Torsional Parameters  ##\n')
+        for line in lines_ffaffurr[lines_position_2+5:lines_position_3-4]:
+            stringa, atomclass1, atomclass2, atomclass3, Ktheta, theta0 = line.split(None, 5)
+            aclasstriple = ( int(atomclass1), int(atomclass2), int(atomclass3) )
+            classtriple__Ktheta[ aclasstriple ] = float(Ktheta)
+            classtriple__theta0[ aclasstriple ] = float(theta0)
+            
+        lines_position_4 = lines_ffaffurr.index('      ##  Torsional Parameters  ##\n')
+        for line in lines_ffaffurr[lines_position_3+5:lines_position_4-4]:
+            stringa, atomclass1, atomclass2, atomclass3, atomclass4, impV2, phase, periodicity = line.split(None, 7)
+            classquadruple__impV2[ ( int(atomclass1), int(atomclass2), int(atomclass3),int(atomclass4) ) ] = float(impV2)
+            
+        lines_position_5 = lines_ffaffurr.index('      ##  Atomic Partial Charge Parameters  ##\n')
+        for line in lines_ffaffurr[lines_position_4+5:lines_position_5-4]:
+            stringa, atomclass1, atomclass2, atomclass3, atomclass4, Va, phasestringa1, phasestringa2, Vb, phasestringb1, phasestringb2, Vc, phasestringc1, phasestringc2 = line.split(None, 13)
+            if float(Va) != 0:
+                classquadruple__V1[ ( int(atomclass1), int(atomclass2), int(atomclass3), int(atomclass4) ) ] = float(Va)
+            if float(Vb) != 0:    
+                classquadruple__V2[ ( int(atomclass1), int(atomclass2), int(atomclass3), int(atomclass4) ) ] = float(Vb)
+            if float(Vc) != 0:    
+                classquadruple__V3[ ( int(atomclass1), int(atomclass2), int(atomclass3), int(atomclass4) ) ] = float(Vc)
 
     return(n_atom__type, \
             n_atom__class, \
@@ -1019,14 +1096,42 @@ def get_origFF_vdW_pairs_params(type__sigma, type__epsilon):
     for i in range(n_atoms):
         for j in range(i+1, n_atoms):
             if ( not ( (i+1,j+1) in list_12_interacts ) ) and ( not ( (i+1,j+1) in list_13_interacts )):
-                pairs__sigma[ (i+1,j+1) ] = math.sqrt( type__sigma[ n_atom__type[i+1] ] * type__sigma[ n_atom__type[j+1] ] )
-                pairs__epsilon[ (i+1,j+1) ] = math.sqrt( type__epsilon[ n_atom__type[i+1] ] * type__epsilon[ n_atom__type[j+1] ] )
-                if n_atom__type[i+1] <= n_atom__type[j+1]:
-                    typepairs__sigma[ ( n_atom__type[i+1],n_atom__type[j+1] ) ] = pairs__sigma[ (i+1,j+1) ]
-                    typepairs__epsilon[ ( n_atom__type[i+1],n_atom__type[j+1] ) ] = pairs__epsilon[ (i+1,j+1) ]
-                else:
-                    typepairs__sigma[ ( n_atom__type[j+1],n_atom__type[i+1] ) ] = pairs__sigma[ (i+1,j+1) ]
-                    typepairs__epsilon[ ( n_atom__type[j+1],n_atom__type[i+1] ) ] = pairs__epsilon[ (i+1,j+1) ]
+                if dict_keywords['readparamsfromffaffurr'] == False:
+                    pairs__sigma[ (i+1,j+1) ] = math.sqrt( type__sigma[ n_atom__type[i+1] ] * type__sigma[ n_atom__type[j+1] ] )
+                    pairs__epsilon[ (i+1,j+1) ] = math.sqrt( type__epsilon[ n_atom__type[i+1] ] * type__epsilon[ n_atom__type[j+1] ] )
+                    if n_atom__type[i+1] <= n_atom__type[j+1]:
+                        typepairs__sigma[ ( n_atom__type[i+1],n_atom__type[j+1] ) ] = pairs__sigma[ (i+1,j+1) ]
+                        typepairs__epsilon[ ( n_atom__type[i+1],n_atom__type[j+1] ) ] = pairs__epsilon[ (i+1,j+1) ]
+                    else:
+                        typepairs__sigma[ ( n_atom__type[j+1],n_atom__type[i+1] ) ] = pairs__sigma[ (i+1,j+1) ]
+                        typepairs__epsilon[ ( n_atom__type[j+1],n_atom__type[i+1] ) ] = pairs__epsilon[ (i+1,j+1) ]
+                        
+                elif dict_keywords['readparamsfromffaffurr'] == True:
+					# check if file is there
+                    if not os.path.exists('oplsaa-ffaffurr.prm'):
+                        sys.exit('== Error: Input file \'oplsaa-ffaffurr.prm\' does not exist. Exiting now...')
+                   
+                    
+                    # read file
+                    in_file_ffaffurr = open("oplsaa-ffaffurr.prm", 'r')
+                    file_lines_ffaffurr = in_file_ffaffurr.readlines()
+                    lines_ffaffurr = list(file_lines_ffaffurr)
+                    in_file_ffaffurr.close()
+                    
+                    lines_position_1 = lines_ffaffurr.index('      ##  Van der Waals Pair Parameters  ##\n')
+                    lines_position_2 = lines_ffaffurr.index('      ##  Bond Stretching Parameters  ##\n')
+                    for line in lines_ffaffurr[lines_position_1+5:lines_position_2-4]:
+                        stringa, atomtype1, atomtype2, pairsigma, pairepsilon = line.split(None, 4)
+                        typepairs__sigma[ ( int(atomtype1), int(atomtype2) ) ] = float(pairsigma)
+                        typepairs__epsilon[ ( int(atomtype1), int(atomtype2) ) ] = float(pairepsilon)
+                        
+                    if n_atom__type[i+1] <= n_atom__type[j+1]:
+                        pairs__sigma[ (i+1,j+1) ] = typepairs__sigma[ ( n_atom__type[i+1],n_atom__type[j+1] ) ]
+                        pairs__epsilon[ (i+1,j+1) ] = typepairs__epsilon[ ( n_atom__type[i+1],n_atom__type[j+1] ) ]					
+                    else:
+                        pairs__sigma[ (i+1,j+1) ] = typepairs__sigma[ ( n_atom__type[j+1],n_atom__type[i+1] ) ]
+                        pairs__epsilon[ (i+1,j+1) ] = typepairs__epsilon[ ( n_atom__type[j+1],n_atom__type[i+1] ) ]
+
 
     return(pairs__sigma, \
             pairs__epsilon, \
