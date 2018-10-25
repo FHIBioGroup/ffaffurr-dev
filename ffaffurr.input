@@ -69,12 +69,30 @@ Regression_torsionalV_Method Ridge
 
 # only if fine_tune_torsionalV == Regression AND Regression_torsionalV_Method == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_torsionalV 4.000000
+regularization_parameter_torsionalV 2.090745
 
 # improper torsion terms are of form:
 #       (V2imp / 2) * ( 1-cos(2*phi) )
 # V2imp = improper torsional parameter
 #      -> original FF parameters are used (parameters not altered)
+#         (use: fine_tune_imptorsionalV False)
+#         OR parameters can be assigned using regression
+#         from energies of FHI-aims input logfiles
+#         (use: fine_tune_imptorsionalV Regression)
+fine_tune_imptorsionalV False
+#fine_tune_imptorsionalV Regression
+
+# only if fine_tune_imptorsionalV == Regression:
+#   use linear regression
+#   OR Ridge regression
+#   OR Lasso regression
+#Regression_imptorsionalV_Method LinearRegression
+Regression_imptorsionalV_Method Ridge
+#Regression_imptorsionalV_Method Lasso
+
+# only if fine_tune_imptorsionalV == Regression AND Regression_imptorsionalV_Method == {Ridge/Lasso}:
+# set regularization parameter
+regularization_parameter_imptorsionalV 0.1
 
 # van der Waals (vdW; Lennard-Jones) terms are of form:
 #       4*epsilon * f * [ (sigma/r)**12 - (sigma/r)**6 ]

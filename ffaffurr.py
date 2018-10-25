@@ -280,7 +280,8 @@ def main():
     #    and in case I need this function in the future for some reason)
     # -> improper torsion contributions are of form:
     #       0.5 * ( 1-cos(2*phi) )
-#    get_impropsEnergyContribs()
+    if dict_keywords['fine_tune_imptorsionalV'] == True:
+        get_impropsEnergyContribs()
 
 
     # get torsions energy contributions classquadruple-wise
@@ -328,6 +329,11 @@ def main():
         newFF___classquadruple__V2 = copy.deepcopy(origFF___classquadruple__V2)
         newFF___classquadruple__V3 = copy.deepcopy(origFF___classquadruple__V3)
 
+    # do regression to estimate improper torsional parameters (V2imp)
+    if dict_keywords['fine_tune_imptorsionalV'] == True:
+        newFF___classquadruple__impV2 = do_regression_imptorsionalV() 
+    elif dict_keywords['fine_tune_imptorsionalV'] == False:
+        newFF___classquadruple__impV2 = copy.deepcopy(origFF___classquadruple__impV2)
 
     ############################################################
     # print all kinds of information
@@ -351,7 +357,7 @@ def main():
                            newFF___classquadruple__V3)
 
     # print improper torsions parameters (unaltered)
-    print_improps_params(origFF___classquadruple__impV2)
+    print_improps_params(origFF___classquadruple__impV2, newFF___classquadruple__impV2)
 
     # print original and new sigma parameters typepair-wise
     print_sigma_params(origFF___typepairs__sigma, newFF___typepairs__sigma)
@@ -375,6 +381,7 @@ def main():
                                  newFF___classquadruple__V2, \
                                  newFF___classquadruple__V3, \
                                  origFF___classquadruple__impV2, \
+                                 newFF___classquadruple__impV2, \
                                  newFF___typepairs__sigma, \
                                  newFF___typepairs__epsilon, \
                                  newFF___type__charge, \
@@ -460,7 +467,39 @@ def get_input():
     if ( dict_keywords['fine_tune_torsionalV'] == True ) and ( ( dict_keywords['Regression_torsionalV_Method'] == 'Ridge' ) or ( dict_keywords['Regression_torsionalV_Method'] == 'Lasso' ) ):
         astring = get_input_loop_lines(lines, 'regularization_parameter_torsionalV')
         dict_keywords['regularization_parameter_torsionalV'] = float(astring)
+    
+    astring = get_input_loop_lines(lines, 'fine_tune_imptorsionalV')
+    if astring in ['Regression', 'regression']:
+        dict_keywords['fine_tune_imptorsionalV'] = True
+    elif astring in ['False', 'false']:
+        dict_keywords['fine_tune_imptorsionalV'] = False
+    else:
+        sys.exit('== Error: keyword \'fine_tune_imptorsionalV\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
+        
+    #if ( dict_keywords['fine_tune_imptorsionalV'] == True ):
+    #    astring = get_input_loop_lines(lines, 'RegressionTorsionalVall')
+    #    if astring in ['True', 'true']:
+    #        dict_keywords['RegressionTorsionalVall'] = True
+    #    elif astring in ['False', 'false']:
+    #        dict_keywords['RegressionTorsionalVall'] = False
+    #    else:
+    #        sys.exit('== Error: keyword \'RegressionTorsionalVall\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
 
+    if ( dict_keywords['fine_tune_imptorsionalV'] == True ):
+        astring = get_input_loop_lines(lines, 'Regression_imptorsionalV_Method')
+        if astring in ['LinearRegression', 'linearregression', 'linear']:
+            dict_keywords['Regression_imptorsionalV_Method'] = 'LinearRegression'
+        elif astring in ['Ridge', 'ridge']:
+            dict_keywords['Regression_imptorsionalV_Method'] = 'Ridge'
+        elif astring in ['Lasso', 'lasso', 'LASSO']:
+            dict_keywords['Regression_imptorsionalV_Method'] = 'Lasso'
+        else:
+            sys.exit('== Error: keyword \'Regression_imptorsionalV_Method\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
+
+    if ( dict_keywords['fine_tune_imptorsionalV'] == True ) and ( ( dict_keywords['Regression_imptorsionalV_Method'] == 'Ridge' ) or ( dict_keywords['Regression_imptorsionalV_Method'] == 'Lasso' ) ):
+        astring = get_input_loop_lines(lines, 'regularization_parameter_imptorsionalV')
+        dict_keywords['regularization_parameter_imptorsionalV'] = float(astring)
+    
     astring = get_input_loop_lines(lines, 'fine_tune_sigma')
     if astring in ['False', 'false']:
         dict_keywords['fine_tune_sigma'] = 'False'
@@ -3006,6 +3045,62 @@ def do_regression_torsionalV():
             classquadruple__V3)
 
 
+###################################################################
+# do regression to estimate torsional parameters (V1, V2, V3)
+###################################################################
+
+def do_regression_imptorsionalV():
+    
+    predictors = []
+    
+    for colname in data:
+        if ( 'improps' in colname ) and ( 'classquadruple' in colname ):
+            predictors.append( colname )
+    
+    if dict_keywords['Regression_imptorsionalV_Method'] == 'LinearRegression':
+        reg = LinearRegression(fit_intercept=True, normalize=False)
+    elif dict_keywords['Regression_imptorsionalV_Method'] == 'Ridge':
+        reg = Ridge(alpha=dict_keywords['regularization_parameter_imptorsionalV'], fit_intercept=True, normalize=False)
+    elif dict_keywords['Regression_imptorsionalV_Method'] == 'Lasso':
+        reg = Lasso(alpha=dict_keywords['regularization_parameter_imptorsionalV'], fit_intercept=True, normalize=False)
+    
+    data['Ehl-Ecoul-Evdw-Etorsions-Eangles-Ebonds'] = data['E_high-level (Ehl)'] \
+                                                         - data['Ecoul_(FF)'] \
+                                                         - data['Evdw_(FF)'] \
+                                                         - data['Etorsions_(FF)'] \
+                                                         - data['Eangles_(FF)'] \
+                                                         - data['Ebonds_(FF)']
+    
+    reg.fit(data[predictors], data['Ehl-Ecoul-Evdw-Etorsions-Eangles-Ebonds'])
+    
+    # get some infos
+    if False:
+        y_pred = reg.predict(data[predictors])
+        rss = sum( (y_pred-data['Ehl-Ecoul-Evdw-Etorsions-Eangles-Ebonds'])**2. )
+        print('RSS = ', rss)
+        print('\n====\n')
+    #       print('intercept = ', reg.intercept_)
+    
+           #for i in range(len(reg.coef_)):
+           #    print(predictors[i], reg.coef_[i])
+    
+    
+    # get list of (already sorted) classquadruples from DataFrame
+    sortedlist_classquadruplesimpV2 = []
+    for colname in data:
+        if ( 'improps' in colname ) and ( 'classquadruple' in colname ):
+            string_classquadrupleimpV2 = re.findall('\([0-9]*, [0-9]*, [0-9]*, [0-9]*\)',colname)
+            classquadrupleimpV2 = ast.literal_eval(string_classquadrupleimpV2[0])
+            sortedlist_classquadruplesimpV2.append( classquadrupleimpV2 )
+               
+    classquadruple__impV2 = {}
+       
+    for i in range(len(sortedlist_classquadruplesimpV2)):
+        classquadruple__impV2[ sortedlist_classquadruplesimpV2[i] ] = reg.coef_[i]
+           
+    return(classquadruple__impV2)
+    
+	
 ############################################################
 # print atom type/class overview
 ############################################################
@@ -3127,7 +3222,7 @@ def print_theta0_params(origFF___classtriple__theta0, newFF___classtriple__theta
 
 
 ############################################################
-# print improper torsions parameters (unaltered)
+# print torsions parameters 
 ############################################################
 
 def print_torsions_params(origFF___classquadruple__V1, \
@@ -3233,27 +3328,35 @@ def print_torsions_params(origFF___classquadruple__V1, \
 # print improper torsions parameters (unaltered)
 ############################################################
 
-def print_improps_params(origFF___classquadruple__impV2):
+def print_improps_params(origFF___classquadruple__impV2, newFF___classquadruple__impV2):
 
     print('improper V2 parameters:')
     print('-----------------------')
     print('                       ')
 
-    print('>>> Original FF parameters have been used for new FF, i.e. improper V2 parameters have not been altered.')
+    if dict_keywords['fine_tune_imptorsionalV'] == False:
+        print('>>> Original FF parameters have been used for new FF, i.e. improper V2 parameters have not been altered.')
+    elif dict_keywords['fine_tune_imptorsionalV'] == True:
+        if dict_keywords['Regression_imptorsionalV_Method'] == 'LinearRegression':
+            print('>>> improper torsions parameters V2 have been assigned using Linear regression from total energies.')
+        elif dict_keywords['Regression_imptorsionalV_Method'] == 'Ridge':
+            print('>>> improper torsions parameters V2 have been assigned using Ridge regression from total energies.')
+        elif dict_keywords['Regression_imptorsionalV_Method'] == 'Lasso':
+            print('>>> improper torsions parameters V2 have been assigned using Lasso regression from total energies.')
 
     print('                              ')
-    print('  Atom class quadruple    impV2   ')
-    print('                          (origFF)')
-    print('----------------------------------')
+    print('  Atom class quadruple    impV2      impV2  ')
+    print('                          (origFF)   (newFF)')
+    print('--------------------------------------------')
 
     sortedlist_classquadruples = []
 
-    for classquadruple in origFF___classquadruple__impV2:
+    for classquadruple in newFF___classquadruple__impV2:
         sortedlist_classquadruples.append( classquadruple )
     sortedlist_classquadruples = sorted(sortedlist_classquadruples, key=operator.itemgetter(2,3,0,1))
 
     for classquadruple in sortedlist_classquadruples:
-        printf("    %3d  %3d  %3d  %3d   %6.3f\n", classquadruple[0], classquadruple[1], classquadruple[2], classquadruple[3], origFF___classquadruple__impV2[classquadruple])
+        printf("    %3d  %3d  %3d  %3d    %6.3f     %6.3f\n", classquadruple[0], classquadruple[1], classquadruple[2], classquadruple[3], origFF___classquadruple__impV2[classquadruple], newFF___classquadruple__impV2[classquadruple])
 
     print('\n====\n')
 
@@ -3456,6 +3559,7 @@ def write_TINKER_ff_params_file(newFF___classpair__r0, \
                                  newFF___classquadruple__V2, \
                                  newFF___classquadruple__V3, \
                                  origFF___classquadruple__impV2, \
+                                 newFF___classquadruple__impV2, \
                                  newFF___typepairs__sigma, \
                                  newFF___typepairs__epsilon, \
                                  newFF___type__charge, \
@@ -3567,12 +3671,12 @@ electric                332.06
 
     sortedlist_classquadruples = []
 
-    for classquadruple in origFF___classquadruple__impV2:
+    for classquadruple in newFF___classquadruple__impV2:
         sortedlist_classquadruples.append( classquadruple )
     sortedlist_classquadruples = sorted(sortedlist_classquadruples, key=operator.itemgetter(2,3,0,1))
 
     for classquadruple in sortedlist_classquadruples:
-        FFfile.write("imptors     %3d  %3d  %3d  %3d          %7.3f  180.0  2\n" % (classquadruple[0], classquadruple[1], classquadruple[2], classquadruple[3], origFF___classquadruple__impV2[classquadruple]) )
+        FFfile.write("imptors     %3d  %3d  %3d  %3d          %7.3f  180.0  2\n" % (classquadruple[0], classquadruple[1], classquadruple[2], classquadruple[3], newFF___classquadruple__impV2[classquadruple]) )
 
     FFfile.write("""\n
       ############################
