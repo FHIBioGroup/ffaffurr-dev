@@ -242,6 +242,7 @@ def main():
     #         f ={ 1/2 for 1-4-interactions
     #            {   1 for 1-5-interactions and higher
     #get_vdW_energies(newFF___pairs__sigma, newFF___pairs__epsilon, 'Evdw_(origFF)')
+    get_vdW_energies(origFF___pairs__sigma, origFF___pairs__epsilon, 'Evdw_(origFF)')
 
 
     # do regression for estimating fudge factors in Coulomb energies
