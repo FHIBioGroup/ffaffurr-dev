@@ -90,7 +90,7 @@ def main():
 	origFF___pairs__charge = get_charge_pairs_params(origFF___type__charge)
 	
 	# get (type)pair-wise vdW parameters (sigma & epsilon) for original FF
-	#   - original FF --> sigma = 0.5*(sigma1+sigma2)
+	#   - original FF --> sigma = sqrt(sigma1*sigma2)
 	#                     epsilon = sqrt(epsilon1*epsilon2)
 	origFF___pairs__sigma, \
 	 origFF___pairs__epsilon, \
@@ -102,17 +102,18 @@ def main():
 	# --> all energy contributions (bonds, angles, torsions, vdW, Coulomb)
 	#     are calculated using a file called 'input.pdb'
 	#     --> energies can then be cross-checked with OpenMM
-#cross_check_OpenMM(origFF___classpair__Kb, \
-#                    origFF___classpair__r0, \
-#                    origFF___classtriple__Ktheta, \
-#                    origFF___classtriple__theta0, \
-#                    origFF___classquadruple__V1, \
-#                    origFF___classquadruple__V2, \
-#                    origFF___classquadruple__V3, \
-#                    origFF___classquadruple__impV2, \
-#                    origFF___pairs__sigma, \
-#                    origFF___pairs__epsilon, \
-#                    origFF___pairs__charge)
+	#cross_check_OpenMM(origFF___classpair__Kb, \
+	#					origFF___classpair__r0, \
+	#					origFF___classtriple__Ktheta, \
+	#					origFF___classtriple__theta0, \
+	#					origFF___classquadruple__V1, \
+	#					origFF___classquadruple__V2, \
+	#					origFF___classquadruple__V3, \
+	#					origFF___classquadruple__V4, \
+	#					origFF___classquadruple__impV2, \
+	#					origFF___pairs__sigma, \
+	#					origFF___pairs__epsilon, \
+	#					origFF___pairs__charge)
 
 	# get logfiles (FHI-aims output files)
 	# from input file 'ffaffurr.input.FHI-aims-logfiles'
@@ -203,7 +204,7 @@ def main():
 	#       V2  * ( 1+cos(2*phi − θ0) )
 	#       V3  * ( 1+cos(3*phi − θ0) )
 	# θ0 is the phase offset, and k is the force constant
-	get_torsions_energies(origFF___classquadruple__V1, origFF___classquadruple__V2, origFF___classquadruple__V3, origFF___classquadruple__V4)
+	get_torsions_energies(origFF___classquadruple__V1, origFF___classquadruple__V2, origFF___classquadruple__V3, origFF___classquadruple__V4, 'Etorsions_(origFF)')
 	
 	# get improper torsions energies with origFF parameters
 	# -> improper torsion terms are of form:
@@ -213,7 +214,7 @@ def main():
 	# get Coulomb energies with newFF parameters
 	# -> Coulomb terms are of form: f * q1*q2 / r12
 	#          {   0 for 1-2-interactions and 1-3-interactions
-	#       f ={ 0.833333 for 1-4-interactions
+	#       f ={ 0.5 for 1-4-interactions
 	#          {   1 for 1-5-interactions and higher
 	get_Coulomb_energies(newFF___pairs__charge)
 	
@@ -230,7 +231,7 @@ def main():
 	get_vdW_energies(origFF___pairs__sigma, origFF___pairs__epsilon, 'Evdw_(origFF)')
 	
 	# do regression for estimating fudge factors in Coulomb energies
-	f14 = 0.833333 # default
+	f14 = 0.5 # default
 	f15 = 1.0 # default
 	if ( dict_keywords['fine_tune_Coulomb_fudge_factors'] == True ):
 		f14, f15 = do_regression_Coulomb_fudge_factors() 
@@ -259,9 +260,9 @@ def main():
 	#   (not really useful at the moment but I put it in just for completeness
 	#    and in case I need this function in the future for some reason)
 	# -> improper torsion contributions are of form:
-	#       0.5 * ( 1-cos(2*phi) )
-	#if dict_keywords['fine_tune_imptorsionalV'] == True:
-	#    get_impropsEnergyContribs()
+	#       ( 1+cos(2*phi − θ0) )
+	if dict_keywords['fine_tune_imptorsionalV'] == True:
+	    get_impropsEnergyContribs()
 	
 	# get torsions energy contributions classquadruple-wise
 	# torsion (dihedral angles) contributions are of form:
@@ -307,6 +308,32 @@ def main():
 		newFF___classquadruple__V2 = copy.deepcopy(origFF___classquadruple__V2)
 		newFF___classquadruple__V3 = copy.deepcopy(origFF___classquadruple__V3)
 		newFF___classquadruple__V4 = copy.deepcopy(origFF___classquadruple__V4)
+		
+	# get torsions energies with newFF parameters
+	#   (not really useful at the moment but I put it in just for completeness
+	#    and in case I need this function in the future for some reason)
+	# -> torsion (dihedral angles) terms are of form:
+	#       V1  * ( 1+cos(  phi − θ0) )
+	#       V2  * ( 1+cos(2*phi − θ0) )
+	#       V3  * ( 1+cos(3*phi − θ0) )
+	# θ0 is the phase offset, and k is the force constant
+	get_torsions_energies(newFF___classquadruple__V1, newFF___classquadruple__V2, newFF___classquadruple__V3, newFF___classquadruple__V4, 'Etorsions_(FF)')	
+		
+
+	# do regression to estimate improper torsional parameters (impV2)
+	if dict_keywords['fine_tune_imptorsionalV'] == True:
+		newFF___collect_classquadruple__impV2, \
+		  newFF___classquadruple__impV2 = do_regression_imptorsionalV(origFF___classquadruple__impV2) 
+	elif dict_keywords['fine_tune_imptorsionalV'] == False:
+		newFF___collect_classquadruple__impV2 = {}
+		newFF___classquadruple__impV2 = copy.deepcopy(origFF___classquadruple__impV2)
+		for atuple in newFF___classquadruple__impV2:
+			if atuple[2] == 3:
+				newFF___collect_classquadruple__impV2[ (0, 0, atuple[2], atuple[3]) ] = newFF___classquadruple__impV2[ atuple ]
+			elif atuple[2] == 24 or atuple[2] == 47 or atuple[2] == 48:
+				newFF___collect_classquadruple__impV2[ (0, 0, atuple[2], 0) ] = newFF___classquadruple__impV2[ atuple ]
+				
+	#print(newFF___classquadruple__impV2)
 
 	############################################################
 	# print all kinds of information
@@ -330,7 +357,8 @@ def main():
 						   newFF___classquadruple__V3)
 	
 	# print improper torsions parameters (unaltered)
-	print_improps_params(origFF___classquadruple__impV2)
+	print_improps_params(origFF___classquadruple__impV2, \
+						   newFF___classquadruple__impV2)
 	
 	# print original and new sigma parameters typepair-wise
 	print_sigma_params(origFF___typepairs__sigma, newFF___typepairs__sigma)
@@ -353,7 +381,8 @@ def main():
 								 newFF___classquadruple__V2, \
 								 newFF___classquadruple__V3, \
 								 newFF___classquadruple__V4, \
-								 origFF___classquadruple__impV2, \
+								 newFF___collect_classquadruple__impV2, \
+								 newFF___classquadruple__impV2, \
 								 newFF___typepairs__sigma, \
 								 newFF___typepairs__epsilon, \
 								 newFF___type__charge, \
@@ -362,6 +391,12 @@ def main():
 	# write Custombond force parameter file
 	write_custombondforce_para(newFF___pairs__sigma, \
 								newFF___pairs__epsilon)
+								
+	
+	#for atupe in list_imp1234_interacts:
+	#	print(atupe)
+	#	print(n_atom__class[atupe[0]],n_atom__class[atupe[1]], n_atom__class[atupe[2]],n_atom__class[atupe[3]])
+	#print(newFF___classquadruple__impV2)
 
 	print("========")
 	print("Goodbye!"  )
@@ -443,6 +478,29 @@ def get_input():
 	if ( dict_keywords['fine_tune_torsionalV'] == True ) and ( ( dict_keywords['Regression_torsionalV_Method'] == 'Ridge' ) or ( dict_keywords['Regression_torsionalV_Method'] == 'Lasso' ) ):
 		astring = get_input_loop_lines(lines, 'regularization_parameter_torsionalV')
 		dict_keywords['regularization_parameter_torsionalV'] = float(astring)
+		
+	astring = get_input_loop_lines(lines, 'fine_tune_imptorsionalV')
+	if astring in ['Regression', 'regression']:
+		dict_keywords['fine_tune_imptorsionalV'] = True
+	elif astring in ['False', 'false']:
+		dict_keywords['fine_tune_imptorsionalV'] = False
+	else:
+		sys.exit('== Error: keyword \'fine_tune_imptorsionalV\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
+			
+	if ( dict_keywords['fine_tune_imptorsionalV'] == True ):
+		astring = get_input_loop_lines(lines, 'Regression_imptorsionalV_Method')
+		if astring in ['LinearRegression', 'linearregression', 'linear']:
+			dict_keywords['Regression_imptorsionalV_Method'] = 'LinearRegression'
+		elif astring in ['Ridge', 'ridge']:
+			dict_keywords['Regression_imptorsionalV_Method'] = 'Ridge'
+		elif astring in ['Lasso', 'lasso', 'LASSO']:
+			dict_keywords['Regression_imptorsionalV_Method'] = 'Lasso'
+		else:
+			sys.exit('== Error: keyword \'Regression_imptorsionalV_Method\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
+	
+	if ( dict_keywords['fine_tune_imptorsionalV'] == True ) and ( ( dict_keywords['Regression_imptorsionalV_Method'] == 'Ridge' ) or ( dict_keywords['Regression_imptorsionalV_Method'] == 'Lasso' ) ):
+		astring = get_input_loop_lines(lines, 'regularization_parameter_imptorsionalV')
+		dict_keywords['regularization_parameter_imptorsionalV'] = float(astring)
 	
 	astring = get_input_loop_lines(lines, 'fine_tune_sigma')
 	if astring in ['False', 'false']:
@@ -560,9 +618,13 @@ def get_originalFF_params():
 	n_torsions = -1
 	n_vdws     = -1
 	
+	if dict_keywords['readparamsfromffaffurr'] == False:
+		choose_forcefield = 'OPLS-AA.xml'
+	elif dict_keywords['readparamsfromffaffurr'] == True:
+		choose_forcefield = 'ffaffurr-oplsaa.xml'
 	# build system with OpenMM
 	pdb = PDBFile('input.pdb')
-	forcefield = ForceField('amber03.xml')
+	forcefield = ForceField(choose_forcefield)
 	system = forcefield.createSystem(pdb.topology, nonbondedMethod=NoCutoff, constraints=None, removeCMMotion=False)
 	
 	forces = { force.__class__.__name__ : force for force in system.getForces() }
@@ -663,7 +725,7 @@ def get_originalFF_params():
 	# n_atom__class
 	n_atom__class = {}
 	for index in n_atom__type.keys():
-		n_atom__class[index] = type__class[n_atom__type[index]]
+		n_atom__class[index] = int(type__class[n_atom__type[index]])
 	
 	#n_atom__atomic, n_atom__mass, class__atomic, class__mass, class__element
 	n_atom__atomic = {}
@@ -683,193 +745,195 @@ def get_originalFF_params():
 		class__mass[classes] = mass.__dict__['_value']
 		class__element[classes] = element.__dict__['_symbol']
 	
-	if dict_keywords['readparamsfromffaffurr'] == False:
-		# origFF___type__charge, origFF___type__sigma(nm), origFF___type__epsilon(kJ/mol)
-		type__charge = {}
-		type__sigma = {}
-		type__epsilon = {} 
-		for index in range(nonbondforce.getNumParticles()):
-			[charge, sigma, epsilon] = nonbondforce.getParticleParameters(index)
-			type = n_atom__type[index]
-			type__charge[type] = charge.__dict__['_value']
-			type__sigma[type] = sigma.__dict__['_value']
-			type__epsilon[type] = epsilon.__dict__['_value']
-		
-		# origFF___classpair__Kb(kJ/(nm**2 mol)), origFF___classpair__r0(nm)	
-		classpair__Kb = {}
-		classpair__r0 = {}
-		list_12_interacts = []
-		for index in range(bondforce.getNumBonds()):
-			[particle1, particle2, r0, Kb]= bondforce.getBondParameters(index)
-			if n_atom__class[int(particle1)] <= n_atom__class[int(particle2)]:
-				aclasspair = ( n_atom__class[int(particle1)],n_atom__class[int(particle2)] )
-			else:
-				aclasspair = ( n_atom__class[int(particle2)],n_atom__class[int(particle1)] )
-			classpair__Kb[ aclasspair ] = float(Kb.__dict__['_value'])
-			classpair__r0[ aclasspair ] = float(r0.__dict__['_value'])
-			
-			if int(particle1) <= int(particle2):
-				atuple = (int(particle1),int(particle2))
-			else:
-				atuple = (int(particle2),int(particle1))
-			list_12_interacts.append( atuple )
-		
-		# origFF___classtriple__Ktheta(kJ/(mol rad**2)), origFF___classtriple__theta0(rad), list_123_interacts
-		classtriple__Ktheta = {}
-		classtriple__theta0 = {}
-		
-		for index in range(angleforce.getNumAngles()):
-			[particle1, particle2, particle3, theta0, Ktheta]= angleforce.getAngleParameters(index)
-			if n_atom__class[int(particle1)] <= n_atom__class[int(particle3)]:
-				aclasstriple = ( n_atom__class[int(particle1)],n_atom__class[int(particle2)],n_atom__class[int(particle3)] )
-			else:
-				aclasstriple = ( n_atom__class[int(particle3)],n_atom__class[int(particle2)],n_atom__class[int(particle1)] )
-			classtriple__Ktheta[ aclasstriple ] = float(Ktheta.__dict__['_value'])
-			classtriple__theta0[ aclasstriple ] = float(theta0.__dict__['_value'])
-		
-		# origFF___classquadruple__V1, origFF___classquadruple__V2, origFF___classquadruple__V3, classquadruple__V4, list_imp1234_interacts
-		list_imp1234_interacts = []
-		classquadruple__V1 = {}
-		classquadruple__V2 = {}
-		classquadruple__V3 = {}
-		classquadruple__V4 = {}
-		classquadruple__impV2 = {}
-		for index in range(torsforce.getNumTorsions()):
-			[particle1, particle2, particle3, particle4, periodicity, phase, k ] = torsforce.getTorsionParameters(index)           # phase(rad), k(kJ/mol)
-			# improper
-			if particle1 <= particle2:
-				atuple1 = (particle1, particle2)
-			else:
-				atuple1 = (particle2, particle1)
-			if particle2 <= particle3:
-				atuple2 = (particle2, particle3)
-			else:
-				atuple2 = (particle3, particle2)
-			if particle3 <= particle4:
-				atuple3 = (particle3, particle4)
-			else:
-				atuple3 = (particle4, particle3)
-			if (atuple1 or atuple2 or atuple3) not in list_12_interacts:		
-				atuple = (int(particle1), int(particle2), int(particle3), int(particle4))		
-				list_imp1234_interacts.append( atuple )
-				classquadruple__impV2[ ( n_atom__class[int(particle1)],n_atom__class[int(particle2)],n_atom__class[int(particle3)],n_atom__class[int(particle4)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
-			# proper
-			else:
-				if periodicity == 1:
-					if n_atom__class[int(particle2)] <= n_atom__class[int(particle3)]:
-						classquadruple__V1[ ( n_atom__class[int(particle1)],n_atom__class[int(particle2)],n_atom__class[int(particle3)],n_atom__class[int(particle4)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
-					else:
-						classquadruple__V1[ ( n_atom__class[int(particle4)],n_atom__class[int(particle3)],n_atom__class[int(particle2)],n_atom__class[int(particle1)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
-				elif periodicity == 2:
-					if n_atom__class[int(particle2)] <= n_atom__class[int(particle3)]:
-						classquadruple__V2[ ( n_atom__class[int(particle1)],n_atom__class[int(particle2)],n_atom__class[int(particle3)],n_atom__class[int(particle4)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
-					else:
-						classquadruple__V2[ ( n_atom__class[int(particle4)],n_atom__class[int(particle3)],n_atom__class[int(particle2)],n_atom__class[int(particle1)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
-				elif periodicity == 3:
-					if n_atom__class[int(particle2)] <= n_atom__class[int(particle3)]:
-						classquadruple__V3[ ( n_atom__class[int(particle1)],n_atom__class[int(particle2)],n_atom__class[int(particle3)],n_atom__class[int(particle4)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
-					else:
-						classquadruple__V3[ ( n_atom__class[int(particle4)],n_atom__class[int(particle3)],n_atom__class[int(particle2)],n_atom__class[int(particle1)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
-				elif periodicity == 4:
-					if n_atom__class[int(particle2)] <= n_atom__class[int(particle3)]:
-						classquadruple__V4[ ( n_atom__class[int(particle1)],n_atom__class[int(particle2)],n_atom__class[int(particle3)],n_atom__class[int(particle4)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
-					else:
-						classquadruple__V4[ ( n_atom__class[int(particle4)],n_atom__class[int(particle3)],n_atom__class[int(particle2)],n_atom__class[int(particle1)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
-	elif dict_keywords['readparamsfromffaffurr'] == True:
-		tree = ET.ElementTree(file='ffaffurr-amber03.xml')
-
-		# origFF___type__charge, origFF___type__sigma(nm), origFF___type__epsilon(kJ/mol)
-		type__charge = {}
-		type__sigma = {}
-		type__epsilon = {}
-		if tree.getroot().find('NonbondedForce') is not None:
-			for atom in tree.getroot().find('NonbondedForce').findall('Atom'):
-				type__charge[atom.attrib['type']] = float(atom.attrib['charge'])
-				type__sigma[atom.attrib['type']] = float(atom.attrib['sigma'])
-				type__epsilon[atom.attrib['type']] = float(atom.attrib['epsilon'])
-		
-		# origFF___classpair__Kb(kJ/(nm**2 mol)), origFF___classpair__r0(nm)
-		classpair__Kb = {}
-		classpair__r0 = {}
-		list_12_interacts = []
-		for index in range(bondforce.getNumBonds()):
-			[particle1, particle2, r0, Kb]= bondforce.getBondParameters(index)
-			if int(particle1) <= int(particle2):
-				atuple = (int(particle1),int(particle2))
-			else:
-				atuple = (int(particle2),int(particle1))
-			list_12_interacts.append( atuple )
-			
-		if tree.getroot().find('HarmonicBondForce') is not None:
-			for bond in tree.getroot().find('HarmonicBondForce').findall('Bond'):
-				if bond.attrib['class1'] <= bond.attrib['class2']:
-					aclasspair = ( bond.attrib['class1'],bond.attrib['class2'] )
-				else:
-					aclasspair = ( bond.attrib['class2'],bond.attrib['class1'] )
-				classpair__Kb[ aclasspair ] = float(bond.attrib['k'])
-				classpair__r0[ aclasspair ] = float(bond.attrib['length'])
-		
-		# origFF___classtriple__Ktheta(kJ/(mol rad**2)), origFF___classtriple__theta0(rad), list_123_interacts
-		classtriple__Ktheta = {}
-		classtriple__theta0 = {}		
-		if tree.getroot().find('HarmonicAngleForce') is not None:
-			for angle in tree.getroot().find('HarmonicAngleForce').findall('Angle'):
-				
-				if angle.attrib['class1'] <= angle.attrib['class3']:
-					aclasstriple = ( angle.attrib['class1'], angle.attrib['class2'], angle.attrib['class3'] )
-				else:
-					aclasstriple = ( angle.attrib['class3'], angle.attrib['class2'], angle.attrib['class1'] )
-				classtriple__Ktheta[aclasstriple] = float(angle.attrib['k'])
-				classtriple__theta0[aclasstriple] = float(angle.attrib['angle'])
-		
-		# origFF___classquadruple__V1, origFF___classquadruple__V2, origFF___classquadruple__V3, classquadruple__V4, list_imp1234_interacts
-		list_imp1234_interacts = []
-		classquadruple__V1 = {}
-		classquadruple__V2 = {}
-		classquadruple__V3 = {}
-		classquadruple__V4 = {}
-		classquadruple__impV2 = {}		
-		for index in range(torsforce.getNumTorsions()):
-			[particle1, particle2, particle3, particle4, periodicity, phase, k ] = torsforce.getTorsionParameters(index)           # phase(rad), k(kJ/mol)
-			# improper
-			if particle1 <= particle2:
-				atuple1 = (particle1, particle2)
-			else:
-				atuple1 = (particle2, particle1)
-			if particle2 <= particle3:
-				atuple2 = (particle2, particle3)
-			else:
-				atuple2 = (particle3, particle2)
-			if particle3 <= particle4:
-				atuple3 = (particle3, particle4)
-			else:
-				atuple3 = (particle4, particle3)
-			if (atuple1 or atuple2 or atuple3) not in list_12_interacts:		
-				atuple = (int(particle1), int(particle2), int(particle3), int(particle4))		
-				list_imp1234_interacts.append( atuple )
-					
-		if tree.getroot().find('PeriodicTorsionForce') is not None:
-			for quadruple in tree.getroot().find('PeriodicTorsionForce').findall('Improper'):
-				classquadruple__impV2[( quadruple.attrib['class2'], quadruple.attrib['class3'], quadruple.attrib['class1'], quadruple.attrib['class4'] )] = [ float(quadruple.attrib['phase1']), float(quadruple.attrib['k1'])]
-			for quadruple in tree.getroot().find('PeriodicTorsionForce').findall('Proper'):
-				if quadruple.attrib['class2'] <= quadruple.attrib['class3']:
-					atuple = ( quadruple.attrib['class1'], quadruple.attrib['class2'], quadruple.attrib['class3'], quadruple.attrib['class4'])
-				else:
-					atuple = ( quadruple.attrib['class4'], quadruple.attrib['class3'], quadruple.attrib['class2'], quadruple.attrib['class1'])
-					
-				for key in quadruple.attrib.keys():
-					if 'periodicity' in key:
-						num = key[-1]
-						
-						if int(quadruple.attrib[key]) == 1:
-							classquadruple__V1[atuple] = [ float(quadruple.attrib['phase' + str(num)]), float(quadruple.attrib['k' + str(num)])]
-						elif int(quadruple.attrib[key]) == 2:
-							classquadruple__V2[atuple] = [ float(quadruple.attrib['phase' + str(num)]), float(quadruple.attrib['k' + str(num)])]
-						elif int(quadruple.attrib[key]) == 3:
-							classquadruple__V3[atuple] = [ float(quadruple.attrib['phase' + str(num)]), float(quadruple.attrib['k' + str(num)])]
-						elif int(quadruple.attrib[key]) == 4:
-							classquadruple__V4[atuple] = [ float(quadruple.attrib['phase' + str(num)]), float(quadruple.attrib['k' + str(num)])]		
+	#if dict_keywords['readparamsfromffaffurr'] == False:
+	# origFF___type__charge, origFF___type__sigma(nm), origFF___type__epsilon(kJ/mol)
+	type__charge = {}
+	type__sigma = {}
+	type__epsilon = {} 
+	for index in range(nonbondforce.getNumParticles()):
+		[charge, sigma, epsilon] = nonbondforce.getParticleParameters(index)
+		type = n_atom__type[index]
+		type__charge[type] = charge.__dict__['_value']
+		type__sigma[type] = sigma.__dict__['_value']
+		type__epsilon[type] = epsilon.__dict__['_value']
 	
+	# origFF___classpair__Kb(kJ/(nm**2 mol)), origFF___classpair__r0(nm)	
+	classpair__Kb = {}
+	classpair__r0 = {}
+	list_12_interacts = []
+	for index in range(bondforce.getNumBonds()):
+		[particle1, particle2, r0, Kb]= bondforce.getBondParameters(index)
+		if n_atom__class[int(particle1)] <= n_atom__class[int(particle2)]:
+			aclasspair = ( n_atom__class[int(particle1)],n_atom__class[int(particle2)] )
+		else:
+			aclasspair = ( n_atom__class[int(particle2)],n_atom__class[int(particle1)] )
+		classpair__Kb[ aclasspair ] = float(Kb.__dict__['_value'])
+		classpair__r0[ aclasspair ] = float(r0.__dict__['_value'])
+		
+		if int(particle1) <= int(particle2):
+			atuple = (int(particle1),int(particle2))
+		else:
+			atuple = (int(particle2),int(particle1))
+		list_12_interacts.append( atuple )
+	
+	# origFF___classtriple__Ktheta(kJ/(mol rad**2)), origFF___classtriple__theta0(rad), list_123_interacts
+	classtriple__Ktheta = {}
+	classtriple__theta0 = {}
+	
+	for index in range(angleforce.getNumAngles()):
+		[particle1, particle2, particle3, theta0, Ktheta]= angleforce.getAngleParameters(index)
+		if n_atom__class[int(particle1)] <= n_atom__class[int(particle3)]:
+			aclasstriple = ( n_atom__class[int(particle1)],n_atom__class[int(particle2)],n_atom__class[int(particle3)] )
+		else:
+			aclasstriple = ( n_atom__class[int(particle3)],n_atom__class[int(particle2)],n_atom__class[int(particle1)] )
+		classtriple__Ktheta[ aclasstriple ] = float(Ktheta.__dict__['_value'])
+		classtriple__theta0[ aclasstriple ] = float(theta0.__dict__['_value'])
+	
+	# origFF___classquadruple__V1, origFF___classquadruple__V2, origFF___classquadruple__V3, classquadruple__V4, list_imp1234_interacts
+	list_imp1234_interacts = []
+	classquadruple__V1 = {}
+	classquadruple__V2 = {}
+	classquadruple__V3 = {}
+	classquadruple__V4 = {}
+	classquadruple__impV2 = {}
+	for index in range(torsforce.getNumTorsions()):
+		[particle1, particle2, particle3, particle4, periodicity, phase, k ] = torsforce.getTorsionParameters(index)           # phase(rad), k(kJ/mol)
+		# improper
+		if particle1 <= particle2:
+			atuple1 = (particle1, particle2)
+		else:
+			atuple1 = (particle2, particle1)
+		if particle2 <= particle3:
+			atuple2 = (particle2, particle3)
+		else:
+			atuple2 = (particle3, particle2)
+		if particle3 <= particle4:
+			atuple3 = (particle3, particle4)
+		else:
+			atuple3 = (particle4, particle3)
+		if (atuple1 or atuple2 or atuple3) not in list_12_interacts:		
+			atuple = (int(particle1), int(particle2), int(particle3), int(particle4))		
+			list_imp1234_interacts.append( atuple )
+			classquadruple__impV2[ ( n_atom__class[int(particle1)],n_atom__class[int(particle2)],n_atom__class[int(particle3)],n_atom__class[int(particle4)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
+		# proper
+		else:
+			if periodicity == 1:
+				if n_atom__class[int(particle2)] <= n_atom__class[int(particle3)]:
+					classquadruple__V1[ ( n_atom__class[int(particle1)],n_atom__class[int(particle2)],n_atom__class[int(particle3)],n_atom__class[int(particle4)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
+				else:
+					classquadruple__V1[ ( n_atom__class[int(particle4)],n_atom__class[int(particle3)],n_atom__class[int(particle2)],n_atom__class[int(particle1)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
+			elif periodicity == 2:
+				if n_atom__class[int(particle2)] <= n_atom__class[int(particle3)]:
+					classquadruple__V2[ ( n_atom__class[int(particle1)],n_atom__class[int(particle2)],n_atom__class[int(particle3)],n_atom__class[int(particle4)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
+				else:
+					classquadruple__V2[ ( n_atom__class[int(particle4)],n_atom__class[int(particle3)],n_atom__class[int(particle2)],n_atom__class[int(particle1)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
+			elif periodicity == 3:
+				if n_atom__class[int(particle2)] <= n_atom__class[int(particle3)]:
+					classquadruple__V3[ ( n_atom__class[int(particle1)],n_atom__class[int(particle2)],n_atom__class[int(particle3)],n_atom__class[int(particle4)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
+				else:
+					classquadruple__V3[ ( n_atom__class[int(particle4)],n_atom__class[int(particle3)],n_atom__class[int(particle2)],n_atom__class[int(particle1)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
+			elif periodicity == 4:
+				if n_atom__class[int(particle2)] <= n_atom__class[int(particle3)]:
+					classquadruple__V4[ ( n_atom__class[int(particle1)],n_atom__class[int(particle2)],n_atom__class[int(particle3)],n_atom__class[int(particle4)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
+				else:
+					classquadruple__V4[ ( n_atom__class[int(particle4)],n_atom__class[int(particle3)],n_atom__class[int(particle2)],n_atom__class[int(particle1)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
+	#elif dict_keywords['readparamsfromffaffurr'] == True:
+	#	tree = ET.ElementTree(file='ffaffurr-oplsaa.xml')
+    #
+	#	# origFF___type__charge, origFF___type__sigma(nm), origFF___type__epsilon(kJ/mol)
+	#	type__charge = {}
+	#	type__sigma = {}
+	#	type__epsilon = {}
+	#	if tree.getroot().find('NonbondedForce') is not None:
+	#		for atom in tree.getroot().find('NonbondedForce').findall('Atom'):
+	#			type__charge[atom.attrib['type']] = float(atom.attrib['charge'])
+	#			type__sigma[atom.attrib['type']] = float(atom.attrib['sigma'])
+	#			type__epsilon[atom.attrib['type']] = float(atom.attrib['epsilon'])
+	#	
+	#	# origFF___classpair__Kb(kJ/(nm**2 mol)), origFF___classpair__r0(nm)
+	#	classpair__Kb = {}
+	#	classpair__r0 = {}
+	#	list_12_interacts = []
+	#	for index in range(bondforce.getNumBonds()):
+	#		[particle1, particle2, r0, Kb]= bondforce.getBondParameters(index)
+	#		if int(particle1) <= int(particle2):
+	#			atuple = (int(particle1),int(particle2))
+	#		else:
+	#			atuple = (int(particle2),int(particle1))
+	#		list_12_interacts.append( atuple )
+	#		
+	#	if tree.getroot().find('HarmonicBondForce') is not None:
+	#		for bond in tree.getroot().find('HarmonicBondForce').findall('Bond'):
+	#			if int(bond.attrib['class1']) <= int(bond.attrib['class2']):
+	#				aclasspair = ( int(bond.attrib['class1']),int(bond.attrib['class2']) )
+	#			else:
+	#				aclasspair = ( int(bond.attrib['class2']),int(bond.attrib['class1']) )
+	#			classpair__Kb[ aclasspair ] = float(bond.attrib['k'])
+	#			classpair__r0[ aclasspair ] = float(bond.attrib['length'])
+	#	
+	#	# origFF___classtriple__Ktheta(kJ/(mol rad**2)), origFF___classtriple__theta0(rad), list_123_interacts
+	#	classtriple__Ktheta = {}
+	#	classtriple__theta0 = {}		
+	#	if tree.getroot().find('HarmonicAngleForce') is not None:
+	#		for angle in tree.getroot().find('HarmonicAngleForce').findall('Angle'):
+	#			
+	#			if int(angle.attrib['class1']) <= int(angle.attrib['class3']):
+	#				aclasstriple = ( int(angle.attrib['class1']), int(angle.attrib['class2']), int(angle.attrib['class3']) )
+	#			else:
+	#				aclasstriple = ( int(angle.attrib['class3']), int(angle.attrib['class2']), int(angle.attrib['class1']) )
+	#			classtriple__Ktheta[aclasstriple] = float(angle.attrib['k'])
+	#			classtriple__theta0[aclasstriple] = float(angle.attrib['angle'])
+	#	
+	#	# origFF___classquadruple__V1, origFF___classquadruple__V2, origFF___classquadruple__V3, classquadruple__V4, list_imp1234_interacts
+	#	list_imp1234_interacts = []
+	#	classquadruple__V1 = {}
+	#	classquadruple__V2 = {}
+	#	classquadruple__V3 = {}
+	#	classquadruple__V4 = {}
+	#	classquadruple__impV2 = {}		
+	#	for index in range(torsforce.getNumTorsions()):
+	#		[particle1, particle2, particle3, particle4, periodicity, phase, k ] = torsforce.getTorsionParameters(index)           # phase(rad), k(kJ/mol)
+	#		# improper
+	#		if particle1 <= particle2:
+	#			atuple1 = (particle1, particle2)
+	#		else:
+	#			atuple1 = (particle2, particle1)
+	#		if particle2 <= particle3:
+	#			atuple2 = (particle2, particle3)
+	#		else:
+	#			atuple2 = (particle3, particle2)
+	#		if particle3 <= particle4:
+	#			atuple3 = (particle3, particle4)
+	#		else:
+	#			atuple3 = (particle4, particle3)
+	#		if (atuple1 or atuple2 or atuple3) not in list_12_interacts:		
+	#			atuple = (int(particle1), int(particle2), int(particle3), int(particle4))		
+	#			list_imp1234_interacts.append( atuple )
+	#			#classquadruple__impV2[ ( n_atom__class[int(particle1)],n_atom__class[int(particle2)],n_atom__class[int(particle3)],n_atom__class[int(particle4)] ) ] = [phase.__dict__['_value'], k.__dict__['_value']]
+	#		
+	#				
+	#	if tree.getroot().find('PeriodicTorsionForce') is not None:
+	#		for quadruple in tree.getroot().find('PeriodicTorsionForce').findall('Improper'):
+	#			classquadruple__impV2[( quadruple.attrib['class2'], quadruple.attrib['class3'], quadruple.attrib['class1'], quadruple.attrib['class4'])] = [ float(quadruple.attrib['phase1']), float(quadruple.attrib['k1'])]
+	#		for quadruple in tree.getroot().find('PeriodicTorsionForce').findall('Proper'):
+	#			if int(quadruple.attrib['class2']) <= int(quadruple.attrib['class3']):
+	#				atuple = ( int(quadruple.attrib['class1']), int(quadruple.attrib['class2']), int(quadruple.attrib['class3']), int(quadruple.attrib['class4']))
+	#			else:
+	#				atuple = ( int(quadruple.attrib['class4']), int(quadruple.attrib['class3']), int(quadruple.attrib['class2']), int(quadruple.attrib['class1']))
+	#				
+	#			for key in quadruple.attrib.keys():
+	#				if 'periodicity' in key:
+	#					num = key[-1]
+	#					
+	#					if int(quadruple.attrib[key]) == 1:
+	#						classquadruple__V1[atuple] = [ float(quadruple.attrib['phase' + str(num)]), float(quadruple.attrib['k' + str(num)])]
+	#					elif int(quadruple.attrib[key]) == 2:
+	#						classquadruple__V2[atuple] = [ float(quadruple.attrib['phase' + str(num)]), float(quadruple.attrib['k' + str(num)])]
+	#					elif int(quadruple.attrib[key]) == 3:
+	#						classquadruple__V3[atuple] = [ float(quadruple.attrib['phase' + str(num)]), float(quadruple.attrib['k' + str(num)])]
+	#					elif int(quadruple.attrib[key]) == 4:
+	#						classquadruple__V4[atuple] = [ float(quadruple.attrib['phase' + str(num)]), float(quadruple.attrib['k' + str(num)])]		
+	#
 	list_13_interacts = []
 	list_14_interacts = []
 	for index in range(nonbondforce.getNumExceptions()):
@@ -880,7 +944,7 @@ def get_originalFF_params():
 			atuple = (particle2, particle1)
 		if (chargeprod.__dict__['_value'] == 0) and (epsilon.__dict__['_value'] == 0) and (atuple not in list_12_interacts):          # list_12, list_13
 			list_13_interacts.append(atuple)
-		elif (chargeprod.__dict__['_value'] != 0) or (epsilon.__dict__['_value'] != 0):
+		else: #(chargeprod.__dict__['_value'] != 0) or (epsilon.__dict__['_value'] != 0):
 			list_14_interacts.append(atuple)
 	
 	return(n_atoms, \
@@ -930,7 +994,7 @@ def get_charge_pairs_params(type__charge):
 
 ############################################################
 # get (type)pair-wise vdW parameters (sigma & epsilon) for original FF
-#   - original FF --> sigma = 0.5*(sigma1+sigma2)
+#   - original FF --> sigma = sqrt(sigma1*sigma2)
 #                     epsilon = sqrt(epsilon1*epsilon2)
 ############################################################
 	
@@ -946,7 +1010,7 @@ def get_origFF_vdW_pairs_params(type__sigma, type__epsilon):
 		for i in range(n_atoms):
 			for j in range(i+1, n_atoms):
 				if ( not ( (i,j) in list_12_interacts ) ) and ( not ( (i,j) in list_13_interacts )):					
-						pairs__sigma[ (i,j) ] = 0.5*( type__sigma[ n_atom__type[i] ] + type__sigma[ n_atom__type[j] ] )
+						pairs__sigma[ (i,j) ] = math.sqrt( type__sigma[ n_atom__type[i] ] * type__sigma[ n_atom__type[j] ] )
 						pairs__epsilon[ (i,j) ] = math.sqrt( type__epsilon[ n_atom__type[i] ] * type__epsilon[ n_atom__type[j] ] )
 						if n_atom__type[i] <= n_atom__type[j]:
 							typepairs__sigma[ ( int(n_atom__type[i]),int(n_atom__type[j]) ) ] = pairs__sigma[ (i,j) ]
@@ -1307,13 +1371,51 @@ def get_Coulomb_energy(pairs__distances, pairs__charge):
 	
 	for pair,qq in pairs__charge.items():
 		if pair in list_14_interacts:
-			f = 0.833333
+			f = 0.5
 		else:
 			f = 1.
 		r = pairs__distances[pair]
 		Ecoul += f * qqr2kjpermole * qq / r
 		
 	return(Ecoul)
+
+#########################################################################
+# connvert amber combination rule of vdW pair-wise parameters to OPLS-AA
+#########################################################################
+
+def OPLS_LJ(system):
+    forces = {system.getForce(index).__class__.__name__: system.getForce(
+        index) for index in range(system.getNumForces())}
+    nonbonded_force = forces['NonbondedForce']
+    lorentz = CustomNonbondedForce(
+        '4*epsilon*((sigma/r)^12-(sigma/r)^6); sigma=sqrt(sigma1*sigma2); epsilon=sqrt(epsilon1*epsilon2)')
+    lorentz.setNonbondedMethod(nonbonded_force.getNonbondedMethod())
+    lorentz.addPerParticleParameter('sigma')
+    lorentz.addPerParticleParameter('epsilon')
+    lorentz.setCutoffDistance(nonbonded_force.getCutoffDistance())
+    system.addForce(lorentz)
+    LJset = {}
+    for index in range(nonbonded_force.getNumParticles()):
+        charge, sigma, epsilon = nonbonded_force.getParticleParameters(index)
+        LJset[index] = (sigma, epsilon)
+        lorentz.addParticle([sigma, epsilon])
+        nonbonded_force.setParticleParameters(
+            index, charge, sigma, epsilon * 0)
+    for i in range(nonbonded_force.getNumExceptions()):
+        (p1, p2, q, sig, eps) = nonbonded_force.getExceptionParameters(i)
+        # ALL THE 12,13 and 14 interactions are EXCLUDED FROM CUSTOM NONBONDED
+        # FORCE
+        lorentz.addExclusion(p1, p2)
+        if eps._value != 0.0:
+            #print (p1,p2,sig,eps)
+            sig14 = sqrt(LJset[p1][0] * LJset[p2][0])
+            eps14 = sqrt(LJset[p1][1] * LJset[p2][1])
+            nonbonded_force.setExceptionParameters(i, p1, p2, q, sig14, eps)  #eps = fudge_factor * esp14
+    #for i in range(nonbonded_force.getNumExceptions()):
+    #    (p1, p2, q, sig, eps) = nonbonded_force.getExceptionParameters(i)
+    #    print(p1, p2, q, sig, eps)
+    return system
+
 
 ############################################################
 # test function only used for cross-ckecking with OpenMM
@@ -1352,6 +1454,7 @@ def cross_check_OpenMM(classpair__Kb, \
 						classquadruple__V1, \
 						classquadruple__V2, \
 						classquadruple__V3, \
+						classquadruple__V4, \
 						classquadruple__impV2, \
 						pairs__sigma, \
 						pairs__epsilon, \
@@ -1384,7 +1487,7 @@ def cross_check_OpenMM(classpair__Kb, \
 	
 	# get torsions bending energy
 	Etorsions = get_torsions_energy(quadruples__torsions, \
-									classquadruple__V1, classquadruple__V2, classquadruple__V3)
+									classquadruple__V1, classquadruple__V2, classquadruple__V3, classquadruple__V4)
 	printf("  Torsional Angle:       %9.4f\n", Etorsions)
 	
 	# get improper torsions energy
@@ -1411,9 +1514,11 @@ def cross_check_OpenMM(classpair__Kb, \
 	
 	# energy decomposition caculated from OpenMM 
 	# build system with OpenMM
-	pdb = PDBFile(pdbfile)
-	forcefield = ForceField('amber03.xml')
+	pdb = PDBFile('input.pdb')
+	forcefield = ForceField('OPLS-AA.xml')
 	system = forcefield.createSystem(pdb.topology, nonbondedMethod=NoCutoff, constraints=None, removeCMMotion=False)
+	
+	system = OPLS_LJ(system)
 	
 	for i in range(system.getNumForces()):
 		force = system.getForce(i)
@@ -1429,7 +1534,7 @@ def cross_check_OpenMM(classpair__Kb, \
 		force = system.getForce(i)
 		energy = simulation.context.getState(getEnergy=True, groups=1<<i).getPotentialEnergy()
 		#energy__decomposition[force.__class__.__name__ ] = energy
-		printf(force.__class__.__name__, energy )
+		print(force.__class__.__name__, energy )
 	
 	return()
 
@@ -2130,7 +2235,7 @@ def get_angles_energies(classtriple__Ktheta, classtriple__theta0):
 # θ0 is the phase offset, and k is the force constant
 ############################################################
 
-def get_torsions_energies(classquadruple__V1, classquadruple__V2, classquadruple__V3, classquadruple__V4 ):
+def get_torsions_energies(classquadruple__V1, classquadruple__V2, classquadruple__V3, classquadruple__V4, dataString):
 
 	list_Etorsions = []
 	
@@ -2143,7 +2248,7 @@ def get_torsions_energies(classquadruple__V1, classquadruple__V2, classquadruple
 	
 		list_Etorsions.append( Etorsions )
 	
-	data['Etorsions_(FF)'] = list_Etorsions
+	data[dataString] = list_Etorsions
 	
 	return()
 
@@ -2173,7 +2278,7 @@ def get_improper_energies(classquadruple__impV2):
 # get Coulomb energies with FF parameters
 # -> Coulomb terms are of form: f * q1*q2 / r12
 #          {   0 for 1-2-interactions and 1-3-interactions
-#       f ={ 0.833333 for 1-4-interactions
+#       f ={ 0.5 for 1-4-interactions
 #          {   1 for 1-5-interactions and higher
 ############################################################
 
@@ -2273,7 +2378,7 @@ def do_regression_Coulomb_fudge_factors():
 	# note that the vdW energy of the origFF is used here
 	data['Ehl-EvdW-Etorsions-Eimprops-Eangles-Ebonds'] = data['E_high-level (Ehl)'] \
 														- data['Evdw_(origFF)'] \
-														- data['Etorsions_(FF)'] \
+														- data['Etorsions_(origFF)'] \
 														- data['Eimprops_(FF)'] \
 														- data['Eangles_(FF)'] \
 														- data['Ebonds_(FF)']
@@ -2424,6 +2529,70 @@ def get_anglesEnergyContribs(classtriple__theta0):
 		data['angles_0.5_*_(theta-theta0)**2_classtriple'+str(classtriple)] = list_classtriple_contribs
 	
 	return()
+
+############################################################
+# get improper torsions energy contributions classquadruple-wise
+# -> improper torsion contributions are of form:
+#       impV2  * ( 1+cos(2*phi − θ0) )
+############################################################
+
+def get_impropsEnergyContribs():
+
+    listofdicts_logfiles___classquadruples__impropsEnergyContribs = []
+
+    for n_atom__xyz in listofdicts_logfiles___n_atom__xyz:
+
+        quadruples__improps = get_improps(n_atom__xyz)
+
+        classquadruples__impropsEnergyContribs = {}
+        
+        collect_classquadruples__impropsEnergyContribs = {}
+
+        for quadruple in list_imp1234_interacts:
+
+            phi = quadruples__improps[quadruple]
+            
+            phase = 3.14159265359
+
+            atuple = ( n_atom__class[quadruple[0]],n_atom__class[quadruple[1]],n_atom__class[quadruple[2]],n_atom__class[quadruple[3]] )
+
+            if atuple in classquadruples__impropsEnergyContribs:
+                classquadruples__impropsEnergyContribs[ atuple ] +=   1. + math.cos(  2 * phi - phase ) 
+            else:
+                classquadruples__impropsEnergyContribs[ atuple ] = 1. + math.cos(  2 * phi - phase ) 
+                
+        for atuple in classquadruples__impropsEnergyContribs:
+            if atuple[2] == 3:
+                if (0, 0, atuple[2], atuple[3]) in collect_classquadruples__impropsEnergyContribs:
+                    collect_classquadruples__impropsEnergyContribs[ (0, 0, atuple[2], atuple[3]) ] += classquadruples__impropsEnergyContribs[ atuple ]
+                else:
+                    collect_classquadruples__impropsEnergyContribs[ (0, 0, atuple[2], atuple[3]) ] = classquadruples__impropsEnergyContribs[ atuple ]
+            elif atuple[2] == 24 or atuple[2] == 47 or atuple[2] == 48 :
+                if (0, 0, atuple[2], 0) in collect_classquadruples__impropsEnergyContribs:
+                    collect_classquadruples__impropsEnergyContribs[ (0, 0, atuple[2], 0) ] += classquadruples__impropsEnergyContribs[ atuple ]
+                else:
+                    collect_classquadruples__impropsEnergyContribs[ (0, 0, atuple[2], 0) ] = classquadruples__impropsEnergyContribs[ atuple ]
+        #print(collect_classquadruples__impropsEnergyContribs)
+        #print(classquadruples__impropsEnergyContribs)
+
+        listofdicts_logfiles___classquadruples__impropsEnergyContribs.append( collect_classquadruples__impropsEnergyContribs )
+
+    sortedlist_imps_classquadruples = []
+
+    for classquadruple in listofdicts_logfiles___classquadruples__impropsEnergyContribs[0]:
+        sortedlist_imps_classquadruples.append( classquadruple )
+    sortedlist_imps_classquadruples = sorted(sortedlist_imps_classquadruples, key=operator.itemgetter(2,3,0,1))
+
+    for classquadruple in sortedlist_imps_classquadruples:
+
+        list_classquadruple_contribs = []
+
+        for collect_classquadruples__impropsEnergyContribs in listofdicts_logfiles___classquadruples__impropsEnergyContribs:
+            list_classquadruple_contribs.append( collect_classquadruples__impropsEnergyContribs[ classquadruple ] )
+
+        data['improps_1+cos(2*phi − θ0)_classquadruple'+str(classquadruple)] = list_classquadruple_contribs
+
+    return()
 
 
 ############################################################
@@ -2701,7 +2870,7 @@ def do_regression_epsilon_Tot(origFF___typepairs__epsilon):
 	
 	data['Ehl-Ecoul-Etorsions-Eimprops-Eangles-Ebonds'] = data['E_high-level (Ehl)'] \
 																	- data['Ecoul_(FF)'] \
-																	- data['Etorsions_(FF)'] \
+																	- data['Etorsions_(origFF)'] \
 																	- data['Eimprops_(FF)'] \
 																	- data['Eangles_(FF)'] \
 																	- data['Ebonds_(FF)']
@@ -2794,16 +2963,16 @@ def do_regression_torsionalV(origFF___classquadruple__V1,origFF___classquadruple
 	sortedlist_classquadruplesV3 = []
 	for colname in data:
 		if ( 'torsionsV1' in colname ) and ( 'classquadruple' in colname ):
-			string_classquadrupleV1 = re.match(r'(.+?(..\w+\d*?..\s+(.\w+\d*?.).\s+.\w+\d*?..\s+.\w+\d*?..))', colname).group(2)
-			classquadrupleV1 = ast.literal_eval(string_classquadrupleV1)
+			string_classquadrupleV1 = re.findall('\([0-9]*, [0-9]*, [0-9]*, [0-9]*\)',colname)
+			classquadrupleV1 = ast.literal_eval(string_classquadrupleV1[0])
 			sortedlist_classquadruplesV1.append( classquadrupleV1 )
 		if ( 'torsionsV2' in colname ) and ( 'classquadruple' in colname ):
-			string_classquadrupleV2 = re.match(r'(.+?(..\w+\d*?..\s+(.\w+\d*?.).\s+.\w+\d*?..\s+.\w+\d*?..))', colname).group(2)
-			classquadrupleV2 = ast.literal_eval(string_classquadrupleV2)
+			string_classquadrupleV2 = re.findall('\([0-9]*, [0-9]*, [0-9]*, [0-9]*\)',colname)
+			classquadrupleV2 = ast.literal_eval(string_classquadrupleV2[0])
 			sortedlist_classquadruplesV2.append( classquadrupleV2 )
 		if ( 'torsionsV3' in colname ) and ( 'classquadruple' in colname ):
-			string_classquadrupleV3 = re.match(r'(.+?(..\w+\d*?..\s+(.\w+\d*?.).\s+.\w+\d*?..\s+.\w+\d*?..))', colname).group(2)
-			classquadrupleV3 = ast.literal_eval(string_classquadrupleV3)
+			string_classquadrupleV3 = re.findall('\([0-9]*, [0-9]*, [0-9]*, [0-9]*\)',colname)
+			classquadrupleV3 = ast.literal_eval(string_classquadrupleV3[0])
 			sortedlist_classquadruplesV3.append( classquadrupleV3 )
 	
 	classquadruple__V1 = {}
@@ -2833,6 +3002,72 @@ def do_regression_torsionalV(origFF___classquadruple__V1,origFF___classquadruple
 			classquadruple__V2, \
 			classquadruple__V3)
 
+def do_regression_imptorsionalV(origFF___classquadruple__impV2):
+    
+	predictors = []
+	
+	for colname in data:
+		if ( 'improps' in colname ) and ( 'classquadruple' in colname ):
+			predictors.append( colname )
+	
+	if dict_keywords['Regression_imptorsionalV_Method'] == 'LinearRegression':
+		reg = LinearRegression(fit_intercept=True, normalize=False)
+	elif dict_keywords['Regression_imptorsionalV_Method'] == 'Ridge':
+		reg = Ridge(alpha=dict_keywords['regularization_parameter_imptorsionalV'], fit_intercept=True, normalize=False)
+	elif dict_keywords['Regression_imptorsionalV_Method'] == 'Lasso':
+		reg = Lasso(alpha=dict_keywords['regularization_parameter_imptorsionalV'], fit_intercept=True, normalize=False)
+		#elif dict_keywords['RestrictRegressionimpVPositive'] == False:
+			#reg = Lasso(alpha=dict_keywords['regularization_parameter_imptorsionalV'], fit_intercept=True, normalize=False, positive=False)        
+	
+	data['Ehl-Ecoul-Evdw-Etorsions-Eangles-Ebonds'] = data['E_high-level (Ehl)'] \
+														- data['Ecoul_(FF)'] \
+														- data['Evdw_(FF)'] \
+														- data['Etorsions_(FF)'] \
+														- data['Eangles_(FF)'] \
+														- data['Ebonds_(FF)']
+	
+	reg.fit(data[predictors], data['Ehl-Ecoul-Evdw-Etorsions-Eangles-Ebonds'])
+	
+	# get some infos
+	if False:
+		y_pred = reg.predict(data[predictors])
+		rss = sum( (y_pred-data['Ehl-Ecoul-Evdw-Etorsions-Eangles-Ebonds'])**2. )
+		print('RSS = ', rss)
+		print('\n====\n')
+	#       print('intercept = ', reg.intercept_)
+	
+		#for i in range(len(reg.coef_)):
+		#    print(predictors[i], reg.coef_[i])
+	
+	
+	# get list of (already sorted) classquadruples from DataFrame
+	sortedlist_classquadruplesimpV2 = []
+	for colname in data:
+		if ( 'improps' in colname ) and ( 'classquadruple' in colname ):
+			string_classquadrupleimpV2 = re.findall('\([0-9]*, [0-9]*, [0-9]*, [0-9]*\)',colname)
+			classquadrupleimpV2 = ast.literal_eval(string_classquadrupleimpV2[0])
+			sortedlist_classquadruplesimpV2.append( classquadrupleimpV2 )
+			
+	collect_classquadruple__impV2 = {}
+	
+	for i in range(len(sortedlist_classquadruplesimpV2)):
+		phase = 3.14159265359
+		collect_classquadruple__impV2[ sortedlist_classquadruplesimpV2[i] ] = [phase, reg.coef_[i]]
+	
+	classquadruple__impV2 = {}
+	
+	for atuple in origFF___classquadruple__impV2.keys():
+		if atuple[2] == 3:
+			classquadruple__impV2[ atuple ] = collect_classquadruple__impV2[ (0, 0, atuple[2], atuple[3]) ]
+		elif atuple[2] == 24 or atuple[2] == 47 or atuple[2] == 48:
+			classquadruple__impV2[ atuple ] = collect_classquadruple__impV2[ (0, 0, atuple[2], 0) ]
+		
+	#print(collect_classquadruple__impV2)
+	#print(classquadruple__impV2)
+		
+	return(collect_classquadruple__impV2, \
+	          classquadruple__impV2)
+    
 
 ############################################################
 # print atom type/class overview
@@ -3064,27 +3299,36 @@ def print_torsions_params(origFF___classquadruple__V1, \
 # print improper torsions parameters (unaltered)
 ############################################################
 
-def print_improps_params(origFF___classquadruple__impV2):
+def print_improps_params(origFF___classquadruple__impV2, newFF___classquadruple__impV2):
 
 	print('improper V2 parameters:')
 	print('-----------------------')
 	print('                       ')
 	
-	
-	print('>>> Original FF parameters have been used for new FF, i.e. improper V2 parameters have not been altered.')
-	
-	print('  Atom class quadruple    impV2    ')
-	print('                          (origFF) ')
-	print('-----------------------------------')
+	if dict_keywords['fine_tune_imptorsionalV'] == False:
+		print('>>> Original FF parameters have been used for new FF, i.e. improper torsions parameters impV2 have not been altered.')
+	elif dict_keywords['fine_tune_imptorsionalV'] == True:
+		print('>>> Original phase parameters phase = 3.14159265359 have not been changed.')
+		if dict_keywords['Regression_imptorsionalV_Method'] == 'LinearRegression':
+			print('>>> improper torsions parameters impV2 have been assigned using Linear regression from total energies.')
+		elif dict_keywords['Regression_imptorsionalV_Method'] == 'Ridge':
+			print('>>> improper torsions parameters impV2 have been assigned using Ridge regression from total energies.')
+		elif dict_keywords['Regression_imptorsionalV_Method'] == 'Lasso':
+			print('>>> improper torsions parameters impV2 have been assigned using Lasso regression from total energies.')
+			
+	print('                              ')
+	print('  Atom class quadruple    impV2      impV2  ')
+	print('                          (origFF)   (newFF)')
+	print('--------------------------------------------')
 	
 	sortedlist_classquadruples = []
 	
-	for classquadruple in origFF___classquadruple__impV2:
+	for classquadruple in newFF___classquadruple__impV2:
 		sortedlist_classquadruples.append( classquadruple )
 	sortedlist_classquadruples = sorted(sortedlist_classquadruples, key=operator.itemgetter(2,3,0,1))
-	
+
 	for classquadruple in sortedlist_classquadruples:
-		printf("    %3s  %3s  %3s  %3s    %6.3f\n", classquadruple[2], classquadruple[0], classquadruple[1], classquadruple[3], origFF___classquadruple__impV2[classquadruple][1])
+		printf("    %3s  %3s  %3s  %3s    %6.3f     %6.3f\n", classquadruple[2], classquadruple[0], classquadruple[1], classquadruple[3], origFF___classquadruple__impV2[classquadruple][1], newFF___classquadruple__impV2[classquadruple][1])
 	
 	print('\n====\n')
 	
@@ -3268,8 +3512,8 @@ def print_fudge_factors(f14, f15):
 	print('                  ')
 	print('   Fudge factor     origFF      newFF')
 	print('-------------------------------------')
-	printf('            f14   0.833333    %7.6f\n', f14)
-	printf('            f15   1.000000    %7.6f\n', f15)
+	printf('            f14   0.5000       %7.6f\n', f14)
+	printf('            f15   1.0000       %7.6f\n', f15)
 	
 	print('\n====\n')
 	
@@ -3303,7 +3547,8 @@ def write_OpenMM_ff_params_file(newFF___classpair__r0, \
 							 newFF___classquadruple__V2, \
 							 newFF___classquadruple__V3, \
 							 newFF___classquadruple__V4, \
-							 origFF___classquadruple__impV2, \
+							 newFF___collect_classquadruple__impV2, \
+							 newFF___classquadruple__impV2, \
 							 newFF___typepairs__sigma, \
 							 newFF___typepairs__epsilon, \
 							 newFF___type__charge, \
@@ -3324,8 +3569,8 @@ def write_OpenMM_ff_params_file(newFF___classpair__r0, \
 	for i in range(len(sortedlist_types)):
 		types = str(sortedlist_types[i])
 		classes = str(type__class[types])
-		element =  str(class__element[classes])
-		mass = str(class__mass[classes])
+		element =  str(class__element[int(classes)])
+		mass = str(class__mass[int(classes)])
 		type_name = types+str(i)
 		type_name  = ET.SubElement(atomtype, "Type", attrib={'name': types, 'class': classes, 'element': element, 'mass': mass})
 		
@@ -3370,12 +3615,12 @@ def write_OpenMM_ff_params_file(newFF___classpair__r0, \
 	# son3 HarmonicBondForce
 	bondforces = ET.SubElement(root, "HarmonicBondForce") 	
 	for key in origFF___classpair__Kb.keys():
-		bondforce = ET.SubElement(bondforces, "Bond", attrib={'class1': key[0], 'class2': key[1], 'length': str(newFF___classpair__r0[key]), 'k': str(origFF___classpair__Kb[key]) })
+		bondforce = ET.SubElement(bondforces, "Bond", attrib={'class1': str(key[0]), 'class2': str(key[1]), 'length': str(newFF___classpair__r0[key]), 'k': str(origFF___classpair__Kb[key]) })
 	
 	# son4 HarmonicAngleForce
 	angleforces = ET.SubElement(root, "HarmonicAngleForce") 
 	for key in origFF___classtriple__Ktheta.keys():
-		angleforce = ET.SubElement(angleforces, "Angle", attrib={'class1': key[0],'class2': key[1], 'class3': key[2], 'angle': str(newFF___classtriple__theta0[key]), 'k': str(origFF___classtriple__Ktheta[key])})
+		angleforce = ET.SubElement(angleforces, "Angle", attrib={'class1': str(key[0]),'class2': str(key[1]), 'class3': str(key[2]), 'angle': str(newFF___classtriple__theta0[key]), 'k': str(origFF___classtriple__Ktheta[key])})
 	
 	# son5 PeriodicTorsionForce
 	torsionforces = ET.SubElement(root, "PeriodicTorsionForce")
@@ -3389,7 +3634,7 @@ def write_OpenMM_ff_params_file(newFF___classpair__r0, \
 			atuple = ( n_atom__class[quadruple[3]],n_atom__class[quadruple[2]],n_atom__class[quadruple[1]],n_atom__class[quadruple[0]] )
 			
 		if (atuple in newFF___classquadruple__V1.keys()) or (atuple in newFF___classquadruple__V2.keys()) or (atuple in newFF___classquadruple__V3.keys()) or (atuple in newFF___classquadruple__V4.keys()):
-			torsionforce = ET.SubElement(torsionforces, "Proper", attrib={'class1': atuple[0],'class2': atuple[1], 'class3': atuple[2], 'class4': atuple[3]})
+			torsionforce = ET.SubElement(torsionforces, "Proper", attrib={'class1': str(atuple[0]),'class2': str(atuple[1]), 'class3': str(atuple[2]), 'class4': str(atuple[3])})
 			a = 0
 			if atuple in newFF___classquadruple__V1.keys():
 				a += 1
@@ -3425,9 +3670,17 @@ def write_OpenMM_ff_params_file(newFF___classpair__r0, \
 				torsionforce.set(k_name, str(newFF___classquadruple__V4[atuple][1]))
 		
 	# grandson(improper) in PeriodicTorsionForce
-	for atuple in origFF___classquadruple__impV2.keys():
-		imtorsionforce = ET.SubElement(torsionforces, "Improper", attrib={'class1': atuple[2],'class2': atuple[0], 'class3': atuple[1], 'class4': atuple[3], 'periodicity1': '2', 'phase1': str(origFF___classquadruple__impV2[atuple][0]), 'k1': str(origFF___classquadruple__impV2[atuple][1])})
-	
+	for atuple in newFF___collect_classquadruple__impV2.keys():
+		#if dict_keywords['fine_tune_imptorsionalV'] == False and dict_keywords['readparamsfromffaffurr'] == False:
+		if atuple[2] == 3:
+			imtorsionforce = ET.SubElement(torsionforces, "Improper", attrib={'class1': str(atuple[2]),'class2': '', 'class3': '', 'class4': str(atuple[3]), 'periodicity1': '2', 'phase1': str(newFF___collect_classquadruple__impV2[atuple][0]), 'k1': str(newFF___collect_classquadruple__impV2[atuple][1])})
+		elif atuple[2] == 24 or atuple[2] == 47 or atuple[2] == 48:
+			imtorsionforce = ET.SubElement(torsionforces, "Improper", attrib={'class1': str(atuple[2]),'class2':'', 'class3': '', 'class4': '', 'periodicity1': '2', 'phase1': str(newFF___collect_classquadruple__impV2[atuple][0]), 'k1': str(newFF___collect_classquadruple__impV2[atuple][1])})
+		#elif dict_keywords['fine_tune_imptorsionalV'] == True or dict_keywords['readparamsfromffaffurr'] == True:
+		#	imtorsionforce = ET.SubElement(torsionforces, "Improper", attrib={'class1': str(atuple[2]),'class2': str(atuple[0]), 'class3': str(atuple[1]), 'class4': str(atuple[3]), 'periodicity1': '2', 'phase1': str(newFF___classquadruple__impV2[atuple][0]), 'k1': str(newFF___classquadruple__impV2[atuple][1])})
+			
+
+			
 	# son6 NonbondedForce
 	if ( dict_keywords['fine_tune_Coulomb_fudge_factors'] == True ):
 		if dict_keywords['fine_tune_only_f14'] == True:
@@ -3435,7 +3688,7 @@ def write_OpenMM_ff_params_file(newFF___classpair__r0, \
 		elif dict_keywords['fine_tune_only_f14'] == False:
 			coulomb14scale = f14 / f15
 	elif ( dict_keywords['fine_tune_Coulomb_fudge_factors'] == False ):
-		coulomb14scale = 0.833333
+		coulomb14scale = 0.5
 	
 	nonbondedforces = ET.SubElement(root, "NonbondedForce", attrib={'coulomb14scale': str(coulomb14scale), 'lj14scale': '0.5'})
 	
@@ -3449,7 +3702,7 @@ def write_OpenMM_ff_params_file(newFF___classpair__r0, \
 	
 	indent(root)
 	et = ET.ElementTree(root)
-	et.write("ffaffurr-amber03.xml", encoding="utf-8", xml_declaration=True,  method="xml") 	
+	et.write("ffaffurr-oplsaa.xml", encoding="utf-8", xml_declaration=True,  method="xml") 	
 	return()
 
 ############################################################

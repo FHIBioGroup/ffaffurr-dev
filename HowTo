@@ -2,8 +2,8 @@
 FFAFFURR -- Framework For Adjusting Force Fields Using Regularized Regression
 -----------------------------------------------------------------------------
 
-Because the goal is to "adjust" existing parameters of the Amber03 FF, it is reasonable to provide a standardized listing of parameters as input.
-For any system already set-up with OpenMM, e.g. when using the standard Amber03 FF parameters that are distributed with the OpenMM package, the standardized parameters and connectivity list are taken from the inner code of OpenMM by ffaffurr.py. Here, a coordinate file is needed.
+Because the goal is to "adjust" existing parameters of the OPLS-AA FF, it is reasonable to provide a standardized listing of parameters as input.
+For any system already set-up with OpenMM, e.g. when using the standard OPLS-AA FF parameters that are distributed with the OpenMM package, the standardized parameters and connectivity list are taken from the inner code of OpenMM by ffaffurr.py. Here, a coordinate file is needed.
 
 The input.pdb file is the basic coordinate file that OpenMM-readable.
 
@@ -14,7 +14,7 @@ Finally, the input file ffaffurr.input contains the "switches" that control the 
 
 After "adjusting", we put new parameters into two files: ffaffurr-amber03.xml and CustomForce.xml:
 
-ffaffurr-amber03.xml includes all the parameters except those for vdW interactions. Parameters we got for vdW interactions are pair-wise, Which are atom-wise in standard Amber03 FF. So we put those parameters in CustomForce.xml, and then use a function of OpenMM "CustomBondForce" to add the vdW interactions to the energy calculation.
+ffaffurr-amber03.xml includes all the parameters except those for vdW interactions. Parameters we got for vdW interactions are pair-wise, Which are atom-wise in standard OPLS-AA FF. So we put those parameters in CustomForce.xml, and then use a function of OpenMM "CustomBondForce" to add the vdW interactions to the energy calculation.
 
 CustomForce.xml includes the pair-wise vdW parameters(index, index, sigma, epsilon). If we want to add other custom forces, we can also put parameters in this file.
 

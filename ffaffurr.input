@@ -2,11 +2,11 @@
 # General input file 'ffaffurr.input' #
 #######################################
 
-#Read paramters from oplsaa-ffaffurr.prm.This is used to optimize parameters step by step.
-readparamsfromffaffurr False
-#readparamsfromffaffurr True
+#Read paramters from ffaffurr-oplsaa.xml.This is used to optimize parameters step by step.
+#readparamsfromffaffurr False
+readparamsfromffaffurr True
 
-# bonding terms are of form: kB * (r-r0)**2
+# bonding terms are of form: 0.5 * kB * (r-r0)**2
 # kB = spring constant parameter
 #      -> original FF parameters are used
 #         (parameters not altered)
@@ -21,7 +21,7 @@ readparamsfromffaffurr False
 fine_tune_r0 False
 #fine_tune_r0 True
 
-# angles bending terms are of form: Ktheta * (theta-theta0)**2
+# angles bending terms are of form: 0.5 * Ktheta * (theta-theta0)**2
 # ktheta = spring constant parameter
 #          -> original FF parameters are used
 #             (parameters not altered)
@@ -37,15 +37,14 @@ fine_tune_theta0 False
 #fine_tune_theta0 True
 
 # torsion (dihedral angles) terms are of form:
-#       (V1 / 2) * ( 1+cos(  phi) )
-#       (V2 / 2) * ( 1-cos(2*phi) )
-#       (V3 / 2) * ( 1+cos(3*phi) )
-# V1, V2, V3 = torsional parameters
+#       V * ( 1+cos( nθ − θ0) )
+#       V = torsional parameter
 #      -> original FF parameters can be used (parameters not altered)
 #         (use: fine_tune_torsionalV False)
 #         OR parameters can be assigned using regression
 #            from energies of FHI-aims input logfiles
 #            (use: fine_tune_torsionalV Regression)
+#       (n = periodicity, θ0 = phase offset, θ = dihedral angle)
 fine_tune_torsionalV False
 #fine_tune_torsionalV Regression
 
@@ -69,12 +68,30 @@ Regression_torsionalV_Method Ridge
 
 # only if fine_tune_torsionalV == Regression AND Regression_torsionalV_Method == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_torsionalV 0.010000
+regularization_parameter_torsionalV 0.003182
 
 # improper torsion terms are of form:
-#       (V2imp / 2) * ( 1-cos(2*phi) )
+#       V2imp  * ( 1+cos(2*θ − θ0) )
 # V2imp = improper torsional parameter
 #      -> original FF parameters are used (parameters not altered)
+#         (use: fine_tune_imptorsionalV False)
+#         OR parameters can be assigned using regression
+#         from energies of FHI-aims input logfiles
+#         (use: fine_tune_imptorsionalV Regression)
+fine_tune_imptorsionalV False
+#fine_tune_imptorsionalV Regression
+
+# only if fine_tune_imptorsionalV == Regression:
+#   use linear regression
+#   OR Ridge regression
+#   OR Lasso regression
+#Regression_imptorsionalV_Method LinearRegression
+Regression_imptorsionalV_Method Ridge
+#Regression_imptorsionalV_Method Lasso
+
+# only if fine_tune_imptorsionalV == Regression AND Regression_imptorsionalV_Method == {Ridge/Lasso}:
+# set regularization parameter
+regularization_parameter_imptorsionalV 0.027663
 
 # van der Waals (vdW; Lennard-Jones) terms are of form:
 #       4*epsilon * f * [ (sigma/r)**12 - (sigma/r)**6 ]
@@ -123,7 +140,7 @@ RegressionEpsilonMethod Lasso
 
 # only if RegressionEpsilonMethod == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_epsilon 0.000009
+regularization_parameter_epsilon 0.008802
 
 # only if fine_tune_epsilon == Regression{TS/MBD/Tot} AND RegressionEpsilonMethod == Lasso:
 #   restrict regression-fitted epsilon parameters to be positive
@@ -154,10 +171,10 @@ SetExplicitlyZero_vdW_SigmaEpsilon False
 #         OR partial charge parameters can be assigned using ESP charges
 #            from FHI-aims input logfiles
 #            (use: fine_tune_charge ESP)
-#fine_tune_charge False
+fine_tune_charge False
 #fine_tune_charge Hirshfeld
 #fine_tune_charge ESP
-fine_tune_charge RESP
+#fine_tune_charge RESP
 
 # Coulomb fudge factors are of form (in original OPLS-AA FF):
 #    {   0 for 1-2-interactions and 1-3-interactions
@@ -168,23 +185,18 @@ fine_tune_charge RESP
 #   OR fudge factors can be assigned using linear regression
 #      from total energies of FHI-aims input logfiles
 #      (use: fine_tune_Coulomb_fudge_factors True)
-fine_tune_Coulomb_fudge_factors False
-#fine_tune_Coulomb_fudge_factors True
+#fine_tune_Coulomb_fudge_factors False
+fine_tune_Coulomb_fudge_factors True
 
 # only if fine_tune_Coulomb_fudge_factors == True:
 # - general OPLS-AA form:
-#     Ecoul = (1/d) * ( f_14 * Ecoul(1-4) + f_15 * Ecoul(1-5) + Ecoul(1-6) )
-#       --> d    = dielectric constant (default: 1.0)
+#     Ecoul =  f_14 * Ecoul(1-4) + f_15 * Ecoul(1-5)
 #       --> f_14 = fudge factor for 1-4-interactions (default: 0.5)
 #       --> f_15 = fudge factor for 1-5-interactions (default: 1.0)
-# - TINKER has fudge factors for 1-4-interactions and for 1-5-interactions implemented
-# - TINKER doesn't have a fudge factor for 1-6-interactions and higher implemented,
-#   BUT the dielectric constant d can be used to "resemble"
-#   a f_16plus fudge factor for 1-6-interactions and higher
-# -> estimate f_14, f_15, and d
-#    (use: fine_tune_only_f14_and_f15 False)
-# OR estimate ONLY f_14 and f_15
-#    (use: fine_tune_only_f14_and_f15 True)
+# -> estimate f_14 and f_15
+#    (use: fine_tune_only_f14 False)
+# OR estimate ONLY f_14
+#    (use: fine_tune_only_f14 True)
 fine_tune_only_f14 False
 #fine_tune_only_f14 True
 
