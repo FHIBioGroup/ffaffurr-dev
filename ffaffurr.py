@@ -15,11 +15,15 @@ from simtk.openmm.app.internal import *
 from simtk.openmm import *
 from simtk.unit import *
 
+from scipy.optimize import curve_fit, minimize
+
 from xml.etree import ElementTree as ET
 
 from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import Ridge
 from sklearn.linear_model import Lasso
+
+from pyswarm import pso
 
 def printf(format, *args):
 	sys.stdout.write(format % args)
@@ -125,7 +129,10 @@ def main():
 	
 	# get xyz for all logfiles
 	global listofdicts_logfiles___n_atom__xyz
-	listofdicts_logfiles___n_atom__xyz = get_logfiles_xyz()
+	global index__listofdicts_logfiles___n_atom__xyz
+	listofdicts_logfiles___n_atom__xyz, \
+	 index__listofdicts_logfiles___n_atom__xyz= get_logfiles_xyz()
+	
 	
 	# fine-tune r0 (or not)
 	if dict_keywords['fine_tune_r0'] == True:
@@ -146,11 +153,35 @@ def main():
 		elif ( dict_keywords['fine_tune_charge'] == 'Hirshfeld' ) or ( dict_keywords['fine_tune_charge'] == 'ESP') or ( dict_keywords['fine_tune_charge'] == 'RESP') :
 			newFF___type__charge = get_average_charge()
 	elif dict_keywords['fine_tune_charge_transfer'] == True:
-		newFF___type__charge = get_type__isolated_charge()
+		newFF___type__charge = get_type__isolated_charge(origFF___type__charge)
 		
 		
 	# get pair-wise charge parameters (new FF) for Coulomb interactions, No charge transfer
 	newFF___pairs__charge = get_charge_pairs_params(newFF___type__charge)
+	
+	# fine-tune charge transfer (or not)
+	if dict_keywords['fine_tune_charge_transfer'] == False:
+		newFF___CN_factor = copy.deepcopy(origFF___CN_factor)
+		newFF___type__zero_transfer_distance = copy.deepcopy(origFF___type__zero_transfer_distance)
+		newFF___type__ChargeTransfer_parameters = copy.deepcopy(origFF___type__ChargeTransfer_parameters)
+		fopt = []
+	elif dict_keywords['fine_tune_charge_transfer'] == True:
+		newFF___CN_factor, \
+		 newFF___type__zero_transfer_distance, \
+		 newFF___type__ChargeTransfer_parameters, \
+		 fopt = PSO_optimize(origFF___classpair__Kb, \
+							   newFF___classpair__r0, \
+							   origFF___classtriple__Ktheta, \
+							   newFF___classtriple__theta0, \
+							   origFF___classquadruple__V1, \
+							   origFF___classquadruple__V2, \
+							   origFF___classquadruple__V3, \
+							   origFF___classquadruple__V4, \
+							   origFF___classquadruple__impV2, \
+							   origFF___pairs__sigma, \
+							   origFF___pairs__epsilon, \
+							   newFF___pairs__charge, \
+							   newFF___type__charge)
 	
 	# fine-tune sigma parameters for (type)pairs from TS using R0eff (or not)
 	if dict_keywords['fine_tune_sigma'] == 'False':
@@ -181,27 +212,7 @@ def main():
 			newFF___typepairs__epsilon = set_some_dict_entries_zero(origFF___typepairs__epsilon, \
 																	  newFF___typepairs__epsilon)
 														  
-	# fine-tune charge transfer (or not)
-	if dict_keywords['fine_tune_charge_transfer'] == False:
-		newFF___CN_factor = copy.deepcopy(origFF___CN_factor)
-		newFF___type__zero_transfer_distance = copy.deepcopy(origFF___type__zero_transfer_distance)
-		newFF___type__ChargeTransfer_parameters = copy.deepcopy(origFF___type__ChargeTransfer_parameters)
-	elif dict_keywords['fine_tune_charge_transfer'] == True:
-		if dict_keywords['fine_tune_CN_factor'] == True:
-			newFF___CN_factor = dict_keywords['coordination_number_factor']
-		elif dict_keywords['fine_tune_CN_factor'] == False:
-			newFF___CN_factor = copy.deepcopy(origFF___CN_factor)
-		
-		if dict_keywords['fine_tune_zero_transfer_distance'] == False:
-			if origFF___type__ChargeTransfer_parameters:
-				newFF___type__zero_transfer_distance = copy.deepcopy(origFF___type__zero_transfer_distance)
-				newFF___type__ChargeTransfer_parameters = copy.deepcopy(origFF___type__ChargeTransfer_parameters)
-			else:
-				newFF___type__vdW_radius, newFF___type__zero_transfer_distance = get_type__zero_transfer_distance(newFF___pairs__sigma)													  
-				newFF___type__ChargeTransfer_parameters = get_type__ChargeTransfer_parameters(newFF___type__vdW_radius, newFF___type__zero_transfer_distance)
-		elif dict_keywords['fine_tune_zero_transfer_distance'] == True:	
-			newFF___type__vdW_radius, newFF___type__zero_transfer_distance = get_type__zero_transfer_distance(newFF___pairs__sigma)													  
-			newFF___type__ChargeTransfer_parameters = get_type__ChargeTransfer_parameters(newFF___type__vdW_radius, newFF___type__zero_transfer_distance)
+	
 													  
 	########################################################################################
 	# now we start to collect (and/or calculate) all kinds of energies (total energies,    #
@@ -363,7 +374,7 @@ def main():
 				newFF___collect_classquadruple__impV2[ (0, 0, atuple[2], 0) ] = newFF___classquadruple__impV2[ atuple ]
 				
 	#print(newFF___classquadruple__impV2)
-
+	
 	############################################################
 	# print all kinds of information
 	############################################################
@@ -402,7 +413,7 @@ def main():
 	print_fudge_factors(f14, f15)
 	
 	# print charge transfer parameters
-	print_charge_transfer_params(newFF___CN_factor, newFF___type__zero_transfer_distance, newFF___type__ChargeTransfer_parameters)
+	print_charge_transfer_params(newFF___CN_factor, newFF___type__zero_transfer_distance, newFF___type__ChargeTransfer_parameters, fopt)
 	
 	# write OpenMM force field parameter file
 	write_OpenMM_ff_params_file(newFF___classpair__r0, \
@@ -630,16 +641,6 @@ def get_input():
 	else:
 		sys.exit('== Error: keyword \'fine_tune_charge_transfer\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
 		
-	if ( dict_keywords['fine_tune_charge_transfer'] == True ):
-		astring = get_input_loop_lines(lines, 'fine_tune_charge_parameter')
-		if astring in ['Hirshfeld', 'hirshfeld']:
-			dict_keywords['fine_tune_charge_parameter'] = 'Hirshfeld'
-		elif astring in ['ESP', 'esp']:
-			dict_keywords['fine_tune_charge_parameter'] = 'ESP'
-		elif astring in ['RESP', 'resp']:
-			dict_keywords['fine_tune_charge_parameter'] = 'RESP'
-		else:
-			sys.exit('== Error: keyword \'fine_tune_charge_parameter\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
 			
 	if ( dict_keywords['fine_tune_charge_transfer'] == True ):
 		astring = get_input_loop_lines(lines, 'fine_tune_isolated_charges')
@@ -653,41 +654,6 @@ def get_input():
 			dict_keywords['fine_tune_isolated_charges'] = 'RESP'
 		else:
 			sys.exit('== Error: keyword \'fine_tune_isolated_charges\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
-			
-	if ( dict_keywords['fine_tune_charge_transfer'] == True ):
-		astring = get_input_loop_lines(lines, 'fine_tune_CN_factor')
-		if astring in ['False', 'false']:
-			dict_keywords['fine_tune_CN_factor'] = False
-		elif astring in ['True', 'true']:
-			dict_keywords['fine_tune_CN_factor'] = True
-		else:
-			sys.exit('== Error: keyword \'fine_tune_CN_factor\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
-		
-		if ( dict_keywords['fine_tune_CN_factor'] == True ):
-			astring = get_input_loop_lines(lines, 'coordination_number_factor')
-			dict_keywords['coordination_number_factor'] = float(astring)
-		
-	if ( dict_keywords['fine_tune_charge_transfer'] == True ):
-		astring = get_input_loop_lines(lines, 'fine_tune_zero_transfer_distance')
-		if astring in ['False', 'false']:
-			dict_keywords['fine_tune_zero_transfer_distance'] = False
-		elif astring in ['True', 'true']:
-			dict_keywords['fine_tune_zero_transfer_distance'] = True
-		else:
-			sys.exit('== Error: keyword \'fine_tune_zero_transfer_distance\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
-		
-		if ( dict_keywords['fine_tune_zero_transfer_distance'] == True ):
-			astring = get_input_loop_lines(lines, 'zero_transfer_distance_factor')
-			dict_keywords['zero_transfer_distance_factor'] = float(astring)
-		
-		if ( dict_keywords['fine_tune_zero_transfer_distance'] == True ):
-			astring = get_input_loop_lines(lines, 'fine_tune_only_b')
-			if astring in ['False', 'false']:
-				dict_keywords['fine_tune_only_b'] = False
-			elif astring in ['True', 'true']:
-				dict_keywords['fine_tune_only_b'] = True
-			else:
-				sys.exit('== Error: keyword \'fine_tune_only_b\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
 				
 	if ( dict_keywords['fine_tune_charge'] != 'False' ) and ( dict_keywords['fine_tune_charge_transfer'] == True ):
 		sys.exit('== Error: Average charges and charge transfer can not be used at the same time. Check input file \'ffaffurr.input\'. Exiting now...')
@@ -1514,14 +1480,13 @@ def get_Coulomb_energy(pairs__distances, pairs__charge, type__charge, CN_factor,
 				cation_pairs.append((ion_index, i))
 				
 		# get CN
-		if CN_factor != 'No_CN_factor':
-			CN = get_CN(pairs__distances, cation_pairs, type__zero_transfer_distance)
+		CN = get_CN(pairs__distances, cation_pairs, type__zero_transfer_distance)
 		
 		total_transq = 0	
 		for pair in cation_pairs:
 			if n_atom__type[pair[0]] in type__ChargeTransfer_parameters.keys():
 				if pairs__distances[pair] <= type__zero_transfer_distance[n_atom__type[pair[0]]]:
-					if (CN_factor == 'No_CN_factor') or (CN_factor == 0):
+					if (CN_factor == 0):
 						transq = type__ChargeTransfer_parameters[n_atom__type[pair[0]]][0] * pairs__distances[pair] + type__ChargeTransfer_parameters[n_atom__type[pair[0]]][1]
 					else:
 						transq = ( type__ChargeTransfer_parameters[n_atom__type[pair[0]]][0] * pairs__distances[pair] + type__ChargeTransfer_parameters[n_atom__type[pair[0]]][1] ) / math.pow( CN, 1.0/float(CN_factor) ) 
@@ -1529,7 +1494,7 @@ def get_Coulomb_energy(pairs__distances, pairs__charge, type__charge, CN_factor,
 					n_atom__charge[pair[0]] += transq
 			elif n_atom__type[pair[1]] in type__ChargeTransfer_parameters.keys():
 				if pairs__distances[pair] <= type__zero_transfer_distance[n_atom__type[pair[1]]]:
-					if (CN_factor == 'No_CN_factor') or (CN_factor == 0):
+					if (CN_factor == 0):
 						transq = type__ChargeTransfer_parameters[n_atom__type[pair[1]]][0] * pairs__distances[pair] + type__ChargeTransfer_parameters[n_atom__type[pair[1]]][1]
 					else:
 						transq = ( type__ChargeTransfer_parameters[n_atom__type[pair[1]]][0] * pairs__distances[pair] + type__ChargeTransfer_parameters[n_atom__type[pair[1]]][1] ) / math.pow( CN, 1.0/float(CN_factor) ) 
@@ -1625,7 +1590,151 @@ def get_energy_decomposition(pdbfile):
 		energy = simulation.context.getState(getEnergy=True, groups=1<<i).getPotentialEnergy()
 		energy__decomposition[force.__class__.__name__ ] = energy
 	return(energy__decomposition)
-		   
+
+#############################################################
+# get energies list of training conformers from force field(kcal/mol)
+#############################################################
+
+def get_FF_energy(classpair__Kb, \
+					classpair__r0, \
+					classtriple__Ktheta, \
+					classtriple__theta0, \
+					classquadruple__V1, \
+					classquadruple__V2, \
+					classquadruple__V3, \
+					classquadruple__V4, \
+					classquadruple__impV2, \
+					pairs__sigma, \
+					pairs__epsilon, \
+					pairs__charge, \
+					type__charge, \
+					CN_factor, \
+					type__zero_transfer_distance, \
+					type__ChargeTransfer_parameters):
+						
+	index__Energies_FF = {}
+	for index, n_atom__xyz in index__listofdicts_logfiles___n_atom__xyz.items():
+		
+		# get distances between any two atoms
+		pairs__distances = get_distances(n_atom__xyz)
+		
+		# get angles for any 123 interactions
+		triples__angles = get_angles(n_atom__xyz)
+		
+		# get torsional (dihedral) angles for any 1234 interactions
+		quadruples__torsions = get_torsions(n_atom__xyz)
+		
+		# get improper torsional angles for any improper 1234 interactions
+		quadruples__improps = get_improps(n_atom__xyz)
+		
+		# get bonding energy
+		Ebonds = get_bonding_energy(pairs__distances, classpair__Kb, classpair__r0)
+		#print('Ebonds: ', Ebonds/4.184)
+		
+		# get angle bending energy
+		Eangles = get_angles_energy(triples__angles, classtriple__Ktheta, classtriple__theta0)
+		#print('Eangles: ', Eangles/4.184)
+		
+		# get torsions bending energy
+		Etorsions = get_torsions_energy(quadruples__torsions, \
+										classquadruple__V1, classquadruple__V2, classquadruple__V3, classquadruple__V4)
+										
+		#print('Etorsions: ', Etorsions/4.184)
+		
+		# get improper torsions energy
+		Eimprops = get_improps_energy(quadruples__improps, classquadruple__impV2)
+		#print('Eimprops: ', Eimprops/4.184)
+		
+		# get total torsions energy
+		Etotorsion = Etorsions + Eimprops
+		
+		# get vdW energy
+		Evdw = get_vdW_energy(pairs__distances, pairs__sigma, pairs__epsilon)
+		#print('Evdw: ', Evdw/4.184)
+		
+		# get Coulomb energy
+		Ecoul = get_Coulomb_energy(pairs__distances, pairs__charge, type__charge, CN_factor, type__zero_transfer_distance, type__ChargeTransfer_parameters)
+		#print('Ecoul', Ecoul/4.184)
+		
+		# get Nonbonded energy
+		Enonb = Evdw + Ecoul
+		
+		Energy_FF = Ebonds + Eangles + Etotorsion + Enonb
+		#print('FF : ', Energy_FF/4.184)
+		
+		index__Energies_FF[index] = Energy_FF/4.184
+		
+	return(index__Energies_FF)
+
+##########################################################
+#  get MAE of training data between DFT energie and FF energies
+###########################################################
+def get_MAE(classpair__Kb, \
+			 classpair__r0, \
+			 classtriple__Ktheta, \
+			 classtriple__theta0, \
+			 classquadruple__V1, \
+			 classquadruple__V2, \
+			 classquadruple__V3, \
+			 classquadruple__V4, \
+			 classquadruple__impV2, \
+			 pairs__sigma, \
+			 pairs__epsilon, \
+			 pairs__charge, \
+			 type__charge, \
+			 CN_factor, \
+			 type__zero_transfer_distance, \
+			 type__ChargeTransfer_parameters):
+				 
+	index__Energies_FF = get_FF_energy(classpair__Kb, \
+					classpair__r0, \
+					classtriple__Ktheta, \
+					classtriple__theta0, \
+					classquadruple__V1, \
+					classquadruple__V2, \
+					classquadruple__V3, \
+					classquadruple__V4, \
+					classquadruple__impV2, \
+					pairs__sigma, \
+					pairs__epsilon, \
+					pairs__charge, \
+					type__charge, \
+					CN_factor, \
+					type__zero_transfer_distance, \
+					type__ChargeTransfer_parameters)
+	
+	index__Energies_DFT = {}
+	with open(os.path.join(os.getcwd(), 'energies.pbe+vdw_training.kcal'), 'r') as DFT_energy:
+		lines = DFT_energy.readlines()
+		
+		for line in lines:
+			index = line.split(None, 1)[0]
+			index__Energies_DFT[index] = float(line.split(None, 1)[1])
+		
+		
+	#MAE
+	x_data = []
+	y_data = []
+	
+	for key in index__Energies_FF.keys():
+		x_data.append(index__Energies_FF[key])
+		y_data.append(index__Energies_DFT[key])
+		
+	# l1-norm error function
+	def fs(a):
+		return numpy.sum(abs(x-y+a[0]) for x,y in zip(x_data,y_data))
+		
+	x_data = numpy.array(x_data)
+	y_data = numpy.array(y_data)
+	
+	#l1-norm
+	B = minimize(fs,numpy.array([0.0]),method='Nelder-Mead')
+	rtmp = x_data[:] - y_data[:] + B.x 
+	
+	MAE = float(fs([B.x])/rtmp.shape[0])
+	return(MAE)
+
+  
 def cross_check_OpenMM(classpair__Kb, \
 						classpair__r0, \
 						classtriple__Ktheta, \
@@ -1778,12 +1887,17 @@ def get_fhiaims_xyz(logfile):
 def get_logfiles_xyz():
 
 	listofdicts_logfiles___n_atom__xyz = []
+	index__listofdicts_logfiles___n_atom__xyz = {}
 	
 	for logfile in list_logfiles:
 		n_atom__xyz = get_fhiaims_xyz(logfile)
 		listofdicts_logfiles___n_atom__xyz.append( n_atom__xyz )
+		
+		index = logfile.rsplit('/', 2)[1]
+		index__listofdicts_logfiles___n_atom__xyz[index] = n_atom__xyz
 	
-	return(listofdicts_logfiles___n_atom__xyz)
+	return(listofdicts_logfiles___n_atom__xyz, \
+	       index__listofdicts_logfiles___n_atom__xyz)
 
 ############################################################
 # fine-tune r0 by averaging distances over all FHI-aims input logfiles
@@ -2517,14 +2631,13 @@ def get_Coulomb_energyContribsPer_1_X_interaction(pairs__charge, type__charge, C
 					cation_pairs.append((ion_index, i))
 					
 			# get CN
-			if CN_factor != 'No_CN_factor':
-				CN = get_CN(pairs__distances, cation_pairs, type__zero_transfer_distance)
+			CN = get_CN(pairs__distances, cation_pairs, type__zero_transfer_distance)
 			
 			total_transq = 0	
 			for pair in cation_pairs:
 				if n_atom__type[pair[0]] in type__ChargeTransfer_parameters.keys():
 					if pairs__distances[pair] <= type__zero_transfer_distance[n_atom__type[pair[0]]]:
-						if (CN_factor == 'No_CN_factor') or (CN_factor == 0):
+						if (CN_factor == 0):
 							transq = type__ChargeTransfer_parameters[n_atom__type[pair[0]]][0] * pairs__distances[pair] + type__ChargeTransfer_parameters[n_atom__type[pair[0]]][1]
 						else:
 							transq = ( type__ChargeTransfer_parameters[n_atom__type[pair[0]]][0] * pairs__distances[pair] + type__ChargeTransfer_parameters[n_atom__type[pair[0]]][1] ) / math.pow( CN, 1.0/float(CN_factor) ) 
@@ -2532,7 +2645,7 @@ def get_Coulomb_energyContribsPer_1_X_interaction(pairs__charge, type__charge, C
 						n_atom__charge[pair[0]] += transq
 				elif n_atom__type[pair[1]] in type__ChargeTransfer_parameters.keys():
 					if pairs__distances[pair] <= type__zero_transfer_distance[n_atom__type[pair[1]]]:
-						if (CN_factor == 'No_CN_factor') or CN_factor == 0:
+						if CN_factor == 0:
 							transq = type__ChargeTransfer_parameters[n_atom__type[pair[1]]][0] * pairs__distances[pair] + type__ChargeTransfer_parameters[n_atom__type[pair[1]]][1]
 						else:
 							transq = ( type__ChargeTransfer_parameters[n_atom__type[pair[1]]][0] * pairs__distances[pair] + type__ChargeTransfer_parameters[n_atom__type[pair[1]]][1] ) / math.pow( CN, 1.0/float(CN_factor) ) 
@@ -3302,30 +3415,12 @@ def do_regression_imptorsionalV(origFF___classquadruple__impV2):
 # get charges of isolated atoms for charge transfer 
 ############################################################
 
-def get_type__isolated_charge():
+def get_type__isolated_charge(type_charge):
 	
 	type__isolated_charge = {}
 	
 	if dict_keywords['fine_tune_isolated_charges'] == 'False':
-		type__isolated_charge = {'1085' :  0.1122, \
-                                 '1086' :  0.0508, \
-                                 '1142' : -0.8844, \
-                                 '1148' : -0.2413, \
-                                 '1166' : -0.0351, \
-                                 '1177' :  0.5973, \
-                                 '1178' : -0.5679, \
-                                 '1180' : -0.4157, \
-                                 '1183' :  0.2719, \
-		                         '166'  :  0.1400, \
-								 '177'  :  0.5000, \
-								 '178'  : -0.5000, \
-								 '180'  : -0.5000, \
-								 '183'  :  0.3000, \
-								 '184'  :  0.0200, \
-								 '80'   : -0.1800, \
-								 '85'   :  0.0600, \
-								 '880'  :  1.0, \
-								 '834'  :  2.0}
+		type__isolated_charge = copy.deepcopy(type_charge)
 	elif dict_keywords['fine_tune_isolated_charges'] == 'Hirshfeld':
 		type__isolated_charge = {'1085' :  0.0070, \
                                  '1086' :  0.0263, \
@@ -3394,211 +3489,118 @@ def get_type__isolated_charge():
 	return(atom_type__charge)
 
 ############################################################
-# get zero transfer distance for charge transfer 
+# get charge transfer parameters with Partical Swarm Optimization
 ############################################################
 
-def get_type__zero_transfer_distance(pairs__sigma):
+def PSO_optimize(classpair__Kb, \
+					classpair__r0, \
+					classtriple__Ktheta, \
+					classtriple__theta0, \
+					classquadruple__V1, \
+					classquadruple__V2, \
+					classquadruple__V3, \
+					classquadruple__V4, \
+					classquadruple__impV2, \
+					pairs__sigma, \
+					pairs__epsilon, \
+					pairs__charge, \
+					type__charge):
 	
-	type__ions    = []
 	type__polar   = []
-	n_atom__ions  = []
-	n_atom__polar = []
-	
+		
 	for i in range(n_atoms):
-		if n_atom__atomic[i] == 30 or n_atom__atomic[i] == 11:
-			n_atom__ions.append(i)
-			type__ions.append(n_atom__type[i])
 		if n_atom__atomic[i] == 8 or n_atom__atomic[i] == 16 or n_atom__atomic[i] == 7: 
-			n_atom__polar.append(i)
 			type__polar.append(n_atom__type[i])
-	type__ions = list(set(type__ions))
 	type__polar = list(set(type__polar))
-
-	pairs = []
-	for i in n_atom__polar:
-		for j in n_atom__ions:
-			if i <= j:
-				pair = (i, j)
-			else:
-				pair = (j, i)
-			pairs.append(pair)
 	
-	type__vdW_radius = {}
-	for pair in pairs:
-		if pair[0] in n_atom__polar:
-			type__vdW_radius[ n_atom__type[pair[0]] ] = pairs__sigma[pair] / (2.**(-1./6.))
-		elif pair[1] in n_atom__polar:
-			type__vdW_radius[ n_atom__type[pair[1]] ] = pairs__sigma[pair] / (2.**(-1./6.))
-			
-	if dict_keywords['fine_tune_zero_transfer_distance'] == False:
-		f = 1
-	elif dict_keywords['fine_tune_zero_transfer_distance'] == True:
-		f = dict_keywords['zero_transfer_distance_factor']
-		
 	type__zero_transfer_distance = {}
-	for key in type__vdW_radius.keys():
-		type__zero_transfer_distance[key] = type__vdW_radius[key] * f
-	
-	return(type__vdW_radius, type__zero_transfer_distance)
-	
-############################################################
-# get charge transfer paramter: slope(a), offset(b)
-############################################################		
-
-def get_type__ChargeTransfer_parameters(type__vdW_radius, type__zero_transfer_distance):
-	
-	for i in range(n_atoms):
-		if n_atom__atomic[i] == 30 or n_atom__atomic[i] == 11:
-			cation_element = class__element[ int(n_atom__class[i])]
-	
-	type__ChargeTransfer_parameters_pre = {}
-	type__equilibrium_ChargeTransfer_distance = {}		
-	for key in type__zero_transfer_distance.keys():
-		classes = type__class[key]
-		element =  str(class__element[int(classes)])
-		# pbe0
-		if element == 'S':
-			if cation_element == 'Zn':
-				if dict_keywords['fine_tune_charge_parameter'] == 'Hirshfeld':
-					type__equilibrium_ChargeTransfer_distance[key] = [1.230654, 0.216098]
-				elif dict_keywords['fine_tune_charge_parameter'] == 'ESP':
-					type__equilibrium_ChargeTransfer_distance[key] = [1.001061, 0.216098]
-				elif dict_keywords['fine_tune_charge_parameter'] == 'RESP':
-					type__equilibrium_ChargeTransfer_distance[key] = [1.023083, 0.216098]
-		elif element == 'O':
-			if cation_element == 'Zn':
-				if dict_keywords['fine_tune_charge_parameter'] == 'Hirshfeld':
-					type__equilibrium_ChargeTransfer_distance[key] = [0.620502, 0.191934]
-				elif dict_keywords['fine_tune_charge_parameter'] == 'ESP':
-					type__equilibrium_ChargeTransfer_distance[key] = [0.380015, 0.191934]
-				elif dict_keywords['fine_tune_charge_parameter'] == 'RESP':
-					type__equilibrium_ChargeTransfer_distance[key] = [0.378851, 0.191934]
-			elif cation_element == 'Na':
-				if dict_keywords['fine_tune_charge_parameter'] == 'Hirshfeld':
-					type__equilibrium_ChargeTransfer_distance[key] = [0.17544, 0.218793]
-				elif dict_keywords['fine_tune_charge_parameter'] == 'ESP':
-					type__equilibrium_ChargeTransfer_distance[key] = [0.046911, 0.218793]
-				elif dict_keywords['fine_tune_charge_parameter'] == 'RESP':
-					type__equilibrium_ChargeTransfer_distance[key] = [0.045901, 0.218793]
-		elif element == 'N':
-			if cation_element == 'Zn':
-				if dict_keywords['fine_tune_charge_parameter'] == 'Hirshfeld':
-					type__equilibrium_ChargeTransfer_distance[key] = [0.755663, 0.198679]
-				elif dict_keywords['fine_tune_charge_parameter'] == 'ESP':
-					type__equilibrium_ChargeTransfer_distance[key] = [0.464418, 0.198679]
-				elif dict_keywords['fine_tune_charge_parameter'] == 'RESP':
-					type__equilibrium_ChargeTransfer_distance[key] = [0.43112, 0.198679]
-			elif cation_element == 'Na':
-				if dict_keywords['fine_tune_charge_parameter'] == 'Hirshfeld':
-					type__equilibrium_ChargeTransfer_distance[key] = [0.214039, 0.233769]
-				elif dict_keywords['fine_tune_charge_parameter'] == 'ESP':
-					type__equilibrium_ChargeTransfer_distance[key] = [0.102814, 0.233769]
-				elif dict_keywords['fine_tune_charge_parameter'] == 'RESP':
-					type__equilibrium_ChargeTransfer_distance[key] = [0.101129, 0.233769]
-	
-		# pbe
-		#if element == 'S':
-		#	if cation_element == 'Zn':
-		#		if dict_keywords['fine_tune_charge_parameter'] == 'Hirshfeld':
-		#			type__equilibrium_ChargeTransfer_distance[key] = [1.280172,  0.216098]
-		#		elif dict_keywords['fine_tune_charge_parameter'] == 'ESP':
-		#			type__equilibrium_ChargeTransfer_distance[key] = [1.081491,  0.216098]
-		#		elif dict_keywords['fine_tune_charge_parameter'] == 'RESP':
-		#			type__equilibrium_ChargeTransfer_distance[key] = [1.102089,  0.216098]
-		#elif element == 'O':
-		#	if cation_element == 'Zn':
-		#		if dict_keywords['fine_tune_charge_parameter'] == 'Hirshfeld':
-		#			type__equilibrium_ChargeTransfer_distance[key] = [0.702236, 0.191934]
-		#		elif dict_keywords['fine_tune_charge_parameter'] == 'ESP':
-		#			type__equilibrium_ChargeTransfer_distance[key] = [0.500530, 0.191934]
-		#		elif dict_keywords['fine_tune_charge_parameter'] == 'RESP':
-		#			type__equilibrium_ChargeTransfer_distance[key] = [0.500638, 0.191934]
-		#	elif cation_element == 'Na':
-		#		if dict_keywords['fine_tune_charge_parameter'] == 'Hirshfeld':
-		#			type__equilibrium_ChargeTransfer_distance[key] = [0.180084, 0.218793]
-		#		elif dict_keywords['fine_tune_charge_parameter'] == 'ESP':
-		#			type__equilibrium_ChargeTransfer_distance[key] = [0.048236, 0.218793]
-		#		elif dict_keywords['fine_tune_charge_parameter'] == 'RESP':
-		#			type__equilibrium_ChargeTransfer_distance[key] = [0.047876, 0.218793]
-		#elif element == 'N':
-		#	if cation_element == 'Zn':
-		#		if dict_keywords['fine_tune_charge_parameter'] == 'Hirshfeld':
-		#			type__equilibrium_ChargeTransfer_distance[key] = [0.830126, 0.198679]
-		#		elif dict_keywords['fine_tune_charge_parameter'] == 'ESP':
-		#			type__equilibrium_ChargeTransfer_distance[key] = [0.595409, 0.198679]
-		#		elif dict_keywords['fine_tune_charge_parameter'] == 'RESP':
-		#			type__equilibrium_ChargeTransfer_distance[key] = [0.554994, 0.198679]
-		#	elif cation_element == 'Na':
-		#		if dict_keywords['fine_tune_charge_parameter'] == 'Hirshfeld':
-		#			type__equilibrium_ChargeTransfer_distance[key] = [0.223657, 0.233769]
-		#		elif dict_keywords['fine_tune_charge_parameter'] == 'ESP':
-		#			type__equilibrium_ChargeTransfer_distance[key] = [0.108752, 0.233769]
-		#		elif dict_keywords['fine_tune_charge_parameter'] == 'RESP':
-		#			type__equilibrium_ChargeTransfer_distance[key] = [0.107700, 0.233769]
-	
-	
-	type__ChargeTransfer_parameters_pre = {}
-	for key in type__zero_transfer_distance.keys():
-		type__ChargeTransfer_parameters_pre[key] = []
-		
-		reg = LinearRegression(fit_intercept=True, normalize=False)
-		data = 'data_' + str(key)
-		data = pandas.DataFrame()
-		
-		char = []
-		distance = []
-		
-		char.append(type__equilibrium_ChargeTransfer_distance[key][0])
-		distance.append(type__equilibrium_ChargeTransfer_distance[key][1])
-		
-		char.append(0)
-		distance.append(type__vdW_radius[key])
-		
-		data['char'] = char
-		data['distance'] = distance
-		
-		reg.fit(data['distance'].values.reshape(-1, 1), data['char'])
-		a, b = reg.coef_[0], reg.intercept_
-			
-		type__ChargeTransfer_parameters_pre[key] = [a, b]	
-			
 	type__ChargeTransfer_parameters = {}
+	for i in type__polar:
+		type__zero_transfer_distance[i] = 0
+		
+		slope = 0
+		offset = 0
+		
+		type__ChargeTransfer_parameters[i] = [slope, offset]
+	
+	# Define the objective (to be minimize)
+	def PSO_objective(x):
+		a = -1
+		
+		a += 1
+		CN_factor = x[a]
+		
+		pso_type__zero_transfer_distance = {}
+		for key in type__zero_transfer_distance.keys():
+			a += 1
+			pso_type__zero_transfer_distance[key] = x[a]
+			
+		pso_type__ChargeTransfer_parameters = {}
+		for key in type__ChargeTransfer_parameters.keys():
+			a += 1
+			
+			slope = x[a]
+			offset = -1 * slope * pso_type__zero_transfer_distance[key]
+			pso_type__ChargeTransfer_parameters[key] = [ slope, offset]
+		
+		
+		MAE = get_MAE(classpair__Kb, \
+						classpair__r0, \
+						classtriple__Ktheta, \
+						classtriple__theta0, \
+						classquadruple__V1, \
+						classquadruple__V2, \
+						classquadruple__V3, \
+						classquadruple__V4, \
+						classquadruple__impV2, \
+						pairs__sigma, \
+						pairs__epsilon, \
+						pairs__charge, \
+						type__charge, \
+						CN_factor, \
+						pso_type__zero_transfer_distance, \
+						pso_type__ChargeTransfer_parameters)
+					
+		return(MAE)
+		
+	# Define the lower and upper bounds respectively
+	lb = []
+	ub = []
+	
+	# CN_factor
+	lb.append( 1 )
+	ub.append( 100 )	
+		
 	for key in type__zero_transfer_distance.keys():
-			type__ChargeTransfer_parameters[key] = []		
+		lb.append( 0.24 )
+		ub.append( 0.4 )
+	
+	for key in type__ChargeTransfer_parameters.keys():
+		lb.append( -15 )
+		ub.append( 0 )
 			
-	if dict_keywords['fine_tune_zero_transfer_distance'] == False:
-		for key in type__ChargeTransfer_parameters_pre.keys():
-			type__ChargeTransfer_parameters[key] = type__ChargeTransfer_parameters_pre[key]		
-	elif dict_keywords['fine_tune_zero_transfer_distance'] == True:
-		if dict_keywords['fine_tune_only_b'] == True:
-			for key in type__ChargeTransfer_parameters_pre.keys():
-				type__ChargeTransfer_parameters[key].append( type__ChargeTransfer_parameters_pre[key][0] )
-				type__ChargeTransfer_parameters[key].append( (-1) * type__ChargeTransfer_parameters_pre[key][0] * type__zero_transfer_distance[key] )
-		elif dict_keywords['fine_tune_only_b'] == False:
-			for key in type__zero_transfer_distance.keys():
-				reg = LinearRegression(fit_intercept=True, normalize=False)
-				data = 'data_' + str(key)
-				data = pandas.DataFrame()
-				
-				char = []
-				distance = []
-				
-				char.append(type__equilibrium_ChargeTransfer_distance[key][0])
-				distance.append(type__equilibrium_ChargeTransfer_distance[key][1])
-				
-				char.append(0)
-				distance.append(type__zero_transfer_distance[key])
-				
-				data['char'] = char
-				data['distance'] = distance
-			
-				reg.fit(data['distance'].values.reshape(-1, 1), data['char'])
-				a, b = reg.coef_[0], reg.intercept_
-				
-				type__ChargeTransfer_parameters[key] = [a, b]
-				
-	return(type__ChargeTransfer_parameters)
-    
+	xopt, fopt = pso(PSO_objective, lb, ub, maxiter=10000)
+	
+	b = -1
+	
+	b += 1
+	new___CN_factor = xopt[b]
+	
+	new___type__zero_transfer_distance = {}
+	for key in type__zero_transfer_distance.keys():
+		b += 1
+		new___type__zero_transfer_distance[key] = xopt[b]
+	
+	new___type__ChargeTransfer_parameters = {}
+	for key in type__ChargeTransfer_parameters.keys():
+		b += 1
+		
+		slope = xopt[b]
+		offset = -1 * slope * new___type__zero_transfer_distance[key]
+		new___type__ChargeTransfer_parameters[key] = [ slope, offset]	
+	
+	return(new___CN_factor, new___type__zero_transfer_distance, new___type__ChargeTransfer_parameters, fopt)
+
 
 ############################################################
 # get coordination number(CN) of cation
@@ -4073,7 +4075,8 @@ def print_fudge_factors(f14, f15):
 
 def print_charge_transfer_params(CN_factor, \
 		                          type__zero_transfer_distance, \
-		                          type__ChargeTransfer_parameters):
+		                          type__ChargeTransfer_parameters, \
+		                          fopt):
 	
 	print('Charge transfer parameters:')
 	print('---------------------------')
@@ -4083,18 +4086,9 @@ def print_charge_transfer_params(CN_factor, \
 		print('>>> Charge transfer have not been altered in new FF.')
 	elif dict_keywords['fine_tune_charge_transfer'] == True:
 		print('>>> Charge transfer have been altered in new FF.')
-		if dict_keywords['fine_tune_CN_factor'] == False:
-			print('  >> Coordination number of cation have not been considered.')
-		elif dict_keywords['fine_tune_CN_factor'] == True:
-			printf('  >> Coordination number factor of cation: %4f\n', CN_factor)
-		if dict_keywords['fine_tune_zero_transfer_distance'] == False:
-			print('  >> The sum of vdW radius have been used as zero transfer distances.')
-		elif dict_keywords['fine_tune_zero_transfer_distance'] == True:
-			print('  >> Zero transfer distances have been altered.')
-			if dict_keywords['fine_tune_only_b'] == True:
-				print('    >> Only offset b have been altered.')
-			elif dict_keywords['fine_tune_only_b'] == False:
-				print('    >> Slope a and offset b have been altered.')
+		printf('  >> Mean absolute error from PSO: %6f\n', float(fopt))
+	if CN_factor != 'No_Charge_transfer':
+		printf('>> Coordination number factor of cation: %4f\n', float(CN_factor))
 	
 	if (dict_keywords['fine_tune_charge_transfer'] == True) or (dict_keywords['readparamsfromffaffurr'] == True):
 		print('                  ')
@@ -4328,10 +4322,7 @@ def write_custombondforce_para(newFF___pairs__sigma, \
 	
 	# son2 CustomChargetransfer
 	if dict_keywords['fine_tune_charge_transfer'] == True:
-		if dict_keywords['fine_tune_CN_factor'] == True:
-			chargetransfer = ET.SubElement(root, "CustomChargeTransfer", attrib={'CN_factor': str(CN_factor), 'f15': str(f15)})
-		elif dict_keywords['fine_tune_CN_factor'] == False:
-			chargetransfer = ET.SubElement(root, "CustomChargeTransfer", attrib={'CN_factor': 'No_CN_factor', 'f15': str(f15)})
+		chargetransfer = ET.SubElement(root, "CustomChargeTransfer", attrib={'CN_factor': str(CN_factor), 'f15': str(f15)})
 	elif dict_keywords['fine_tune_charge_transfer'] == False:
 		if dict_keywords['readparamsfromffaffurr'] == False:
 			chargetransfer = ET.SubElement(root, "CustomChargeTransfer", attrib={'CN_factor': 'No_Charge_transfer', 'f15': str(f15)})

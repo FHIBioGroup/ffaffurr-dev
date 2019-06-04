@@ -45,8 +45,8 @@ fine_tune_theta0 False
 #            from energies of FHI-aims input logfiles
 #            (use: fine_tune_torsionalV Regression)
 #       (n = periodicity, θ0 = phase offset, θ = dihedral angle)
-fine_tune_torsionalV False
-#fine_tune_torsionalV Regression
+#fine_tune_torsionalV False
+fine_tune_torsionalV Regression
 
 # only if fine_tune_torsionalV == Regression:
 # either ALL torsional parameters (V1, V2, V3) are considered in regrssion
@@ -68,7 +68,7 @@ Regression_torsionalV_Method Ridge
 
 # only if fine_tune_torsionalV == Regression AND Regression_torsionalV_Method == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_torsionalV 0.010000
+regularization_parameter_torsionalV 0.370633
 
 # improper torsion terms are of form:
 #       V2imp  * ( 1+cos(2*θ − θ0) )
@@ -91,7 +91,7 @@ Regression_imptorsionalV_Method Ridge
 
 # only if fine_tune_imptorsionalV == Regression AND Regression_imptorsionalV_Method == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_imptorsionalV 0.010000
+regularization_parameter_imptorsionalV 30.0
 
 # van der Waals (vdW; Lennard-Jones) terms are of form:
 #       4*epsilon * f * [ (sigma/r)**12 - (sigma/r)**6 ]
@@ -140,7 +140,7 @@ RegressionEpsilonMethod Lasso
 
 # only if RegressionEpsilonMethod == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_epsilon 0.010000
+regularization_parameter_epsilon 30.0
 
 # only if fine_tune_epsilon == Regression{TS/MBD/Tot} AND RegressionEpsilonMethod == Lasso:
 #   restrict regression-fitted epsilon parameters to be positive
@@ -211,15 +211,6 @@ fine_tune_charge_transfer False
 #fine_tune_charge_transfer True
 
 # only if fine_tune_charge_transfer == True:
-# charges that we use to calculate a and b:
-#      Hirshfeld
-#   OR ESP
-#   OR RESP
-#fine_tune_charge_parameter Hirshfeld
-#fine_tune_charge_parameter ESP
-fine_tune_charge_parameter RESP
-
-# only if fine_tune_charge_transfer == True:
 # charges of isolated atoms can use 
 #   -> original FF parameters
 #      (use: fine_tune_isolated_charges False)
@@ -233,36 +224,3 @@ fine_tune_isolated_charges False
 #fine_tune_isolated_charges Hirshfeld
 #fine_tune_isolated_charges ESP
 #fine_tune_isolated_charges RESP
-
-# only if fine_tune_charge_transfer == True:
-#   -> assume the amount of charge transfer is not affected by coordination number(CN) of cation
-#      (use: fine_tune_CN_factor False)
-#   OR the amount of charge transfer is constant to CN
-#      (use: fine_tune_CN_factor Ture)
-#fine_tune_CN_factor False
-fine_tune_CN_factor True
-
-# only if fine_tune_CN_factor == Ture:
-# set CN_factor
-coordination_number_factor 2
-
-# only if fine_tune_charge_transfer == True:
-#   -> vdW radius can be used as zero-transfer-distance
-#      (use: fine_tune_zero_transfer_distance False)
-#   OR zero-transfer-distance can be tuned
-#      (use: fine_tune_zero_transfer_distance True)
-#fine_tune_zero_transfer_distance False
-fine_tune_zero_transfer_distance True
-
-# only if fine_tune_zero_transfer_distance == True:
-# zero-transfer-distance = f * vdW_radius
-# set zero_transfer_distance factor
-zero_transfer_distance_factor 0.010000
-
-# only if fine_tune_zero_transfer_distance == True:
-#   -> fix a and get b
-#      (use: fine_tune_only_b True)
-#   OR fix equilibrium charge and get a and b
-#      (use: fine_tune_only_b False)
-#fine_tune_only_b False
-fine_tune_only_b True
