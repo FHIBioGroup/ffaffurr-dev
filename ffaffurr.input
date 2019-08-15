@@ -45,8 +45,8 @@ fine_tune_theta0 False
 #            from energies of FHI-aims input logfiles
 #            (use: fine_tune_torsionalV Regression)
 #       (n = periodicity, θ0 = phase offset, θ = dihedral angle)
-#fine_tune_torsionalV False
-fine_tune_torsionalV Regression
+fine_tune_torsionalV False
+#fine_tune_torsionalV Regression
 
 # only if fine_tune_torsionalV == Regression:
 # either ALL torsional parameters (V1, V2, V3) are considered in regrssion
@@ -68,7 +68,7 @@ Regression_torsionalV_Method Ridge
 
 # only if fine_tune_torsionalV == Regression AND Regression_torsionalV_Method == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_torsionalV 0.370633
+regularization_parameter_torsionalV 30.0
 
 # improper torsion terms are of form:
 #       V2imp  * ( 1+cos(2*θ − θ0) )
@@ -91,7 +91,7 @@ Regression_imptorsionalV_Method Ridge
 
 # only if fine_tune_imptorsionalV == Regression AND Regression_imptorsionalV_Method == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_imptorsionalV 30.0
+regularization_parameter_imptorsionalV 0.000100
 
 # van der Waals (vdW; Lennard-Jones) terms are of form:
 #       4*epsilon * f * [ (sigma/r)**12 - (sigma/r)**6 ]
@@ -211,8 +211,8 @@ fine_tune_charge_transfer False
 #fine_tune_charge_transfer True
 
 # only if fine_tune_charge_transfer == True:
-# charges of isolated atoms can use 
-#   -> original FF parameters
+# charges of isolated atoms:
+#   -> original FF parameters can be used
 #      (use: fine_tune_isolated_charges False)
 #   OR Hirshfeld charges
 #      (use: fine_tune_isolated_charges Hirshfeld)
@@ -224,3 +224,22 @@ fine_tune_isolated_charges False
 #fine_tune_isolated_charges Hirshfeld
 #fine_tune_isolated_charges ESP
 #fine_tune_isolated_charges RESP
+
+# Polarization terms are of form -0.5 * Alpha * E * E0 :
+# Alpha = polarizability of atoms
+#     E = total electrostatic field produced by atomic charges and induced dipole
+#    E0 = electrostatic field produced by charges in the system
+#    -> polarization energy can be included in force field
+#       (use: fine_tune_polarization_energy True)
+#    OR not (use: fine_tune_polarization_energy False)
+#fine_tune_polarization_energy False
+fine_tune_polarization_energy True
+
+# only if fine_tune_polarization_energy == True:
+# atomic polarizabilities:
+#   -> polarizabilities can be calculated from FHI-aims
+#      (use: fine_tune_polarizabilities False)
+#   OR can be assigned using particle swarm optimization
+#      (use: fine_tune_polarizabilities True)
+fine_tune_polarizabilities False
+#fine_tune_polarizabilities True

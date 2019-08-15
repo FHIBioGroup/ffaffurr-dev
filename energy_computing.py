@@ -33,9 +33,13 @@ def OPLS_LJ(system):
         # FORCE
         lorentz.addExclusion(p1, p2)
         if eps._value != 0.0:
+            #print (p1,p2,sig,eps)
             sig14 = sqrt(LJset[p1][0] * LJset[p2][0])
             eps14 = sqrt(LJset[p1][1] * LJset[p2][1])
             nonbonded_force.setExceptionParameters(i, p1, p2, q, sig14, eps)  #eps = fudge_factor * esp14
+    #for i in range(nonbonded_force.getNumExceptions()):
+    #    (p1, p2, q, sig, eps) = nonbonded_force.getExceptionParameters(i)
+    #    print(p1, p2, q, sig, eps)
     return system
 
 ################### read paramters from CustomForce.xml ###########################################################
@@ -54,6 +58,7 @@ def get_custombondforce_para():
 	pairs_15__para = {}
 	type__ChargeTransfer_parameters = {}
 	type__zero_transfer_distance = {}
+	type__averageAlpha0eff = {}
 	
 	tree = ET.ElementTree(file='CustomForce.xml')
 	if tree.getroot().find('CustomBondForce') is not None:
@@ -77,14 +82,19 @@ def get_custombondforce_para():
 		for atom in tree.getroot().find('CustomChargeTransfer').findall('Atom'):
 			type__ChargeTransfer_parameters[atom.attrib['type']] = [float(atom.attrib['a']), float(atom.attrib['b'])]
 			type__zero_transfer_distance[atom.attrib['type']] = float(atom.attrib['r'])
+			
+	if tree.getroot().find('CustomPoleForce') is not None:
+		for atom in tree.getroot().find('CustomPoleForce').findall('Polarize'):
+			type__averageAlpha0eff[ atom.attrib['type'] ] = float( atom.attrib['polarizability'] )
 	
 	return(pairs_14__para, \
 			pairs_15__para, \
 			CN_factor, \
 			f15, \
 			type__ChargeTransfer_parameters, \
-			type__zero_transfer_distance)
-			
+			type__zero_transfer_distance, \
+			type__averageAlpha0eff)
+
 def get_CN(n_atom__xyz, cation_pairs, type__zero_transfer_distance):
 	
 	CN = 0
@@ -162,6 +172,111 @@ def get_distance(atom1, atom2, n_atom__xyz):
 	distance = distance * 0.1                     # angstrom to nm
 	return(distance)
 
+def get_type__R0eff():
+	
+	type__averageR0eff = {'1085': 1.4149264217692872, '1086': 1.4309764755354706, '1142': 1.9897072370287776, '1148': 1.7819912074967883, '1166': 1.788047448866796, \
+	'1177': 1.784870490384751, '1178': 1.6401096503398347, '1180': 1.6706842147213425, '1183': 1.4185723962507257, '177': 1.7729926635472828, '178': 1.6372212679996812, \
+	'180': 1.6521884358863974, '183': 1.373871522855526, '184': 1.712216281890704, '80': 1.7202490638995236, '834': 1.9503019373349135, '85': 1.3604847567675604}
+
+	return(type__averageR0eff)
+
+# get E0
+def get_E0(n_atom__xyz, n_atom__charge, n_atom_nohyd, ion_index):
+	
+	type__averageR0eff = get_type__R0eff()
+	
+	n_atom__E0 = {}
+	n_atom__E0[ion_index] = 0
+	
+	for i in n_atom_nohyd:
+		if i != ion_index:
+			vec_r_iMe = numpy.array( n_atom__xyz[ ion_index ] ) * 0.1 - numpy.array( n_atom__xyz[ i ] ) * 0.1         # angstrom > nm
+			vec_r_Mei = numpy.array( n_atom__xyz[ i ] ) * 0.1 - numpy.array( n_atom__xyz[ ion_index ] ) * 0.1
+				
+			r_iMe = get_distance(i, ion_index, n_atom__xyz)
+			
+			# add r_cutoff
+			r_vdw_radius = type__averageR0eff[ n_atom__type[i] ] * 0.1 + type__averageR0eff[ n_atom__type[ion_index] ] * 0.1   # angstrom > nm
+			r_cutoff = 0.92 * r_vdw_radius
+			
+			if r_iMe <= r_cutoff:
+				r_iMe = r_cutoff
+			
+			factor_i = n_atom__charge[ ion_index ] / ( r_iMe ** 3 )
+			n_atom__E0[i] = factor_i * vec_r_iMe
+			
+			factor_Me = n_atom__charge[ i ] / ( r_iMe ** 3 )
+			n_atom__E0[ion_index] += factor_Me * vec_r_Mei
+			
+	return(n_atom__E0)
+	
+# get Tij
+def get_Tij(n_atom__xyz, i, j):
+	
+	type__averageR0eff = get_type__R0eff()
+	
+	vec_r_ij = numpy.array( n_atom__xyz[ j ] ) * 0.1 - numpy.array( n_atom__xyz[ i ] ) * 0.1         # angstrom > nm
+	#vec_r_ij_T = vec_r_ij.transpose()
+		
+	r_ij = get_distance(i, j, n_atom__xyz)
+	
+	# add r_cutoff
+	r_vdw_radius = type__averageR0eff[ n_atom__type[i] ] * 0.1 + type__averageR0eff[ n_atom__type[j] ] * 0.1   # angstrom > nm
+	r_cutoff = 0.92 * r_vdw_radius
+	
+	if r_ij <= r_cutoff:
+		r_ij = r_cutoff
+		
+	I = numpy.eye(3)
+	
+	rij_rij = numpy.dot(vec_r_ij.reshape(-1,1), vec_r_ij.reshape(1,-1))
+	Tij = ( 3  / r_ij ** 2 * rij_rij  - I ) / r_ij ** 3
+	return(Tij)
+
+# get induced dipole
+def get_induced_dipole(n_atom__xyz, n_atom__alpha0eff, n_atom__charge, n_atom_nohyd, ion_index):
+	
+	# get E0
+	n_atom_nohyd__E0 = get_E0(n_atom__xyz, n_atom__charge, n_atom_nohyd, ion_index)
+	
+	# initial guess of the induced dipole of cation
+	dipole_Me_initial = numpy.array( [0., 0., 0.] ) 
+	
+	dipole_Me_1 = dipole_Me_initial
+	
+	# induced dipole
+	n_atom_nohyd__dipole ={}
+	dipole_Me_2 = n_atom__alpha0eff[ion_index] *  n_atom_nohyd__E0[ion_index]
+	for i in n_atom_nohyd:
+		if i != ion_index:
+			TiMe = get_Tij(n_atom__xyz, i, ion_index)
+			TMei = get_Tij(n_atom__xyz, ion_index, i)
+			#print(TiMe)
+			#print(type(TiMe))
+			#print(type(dipole_Me_1))
+			n_atom_nohyd__dipole[i] = n_atom__alpha0eff[i] *  n_atom_nohyd__E0[i] + n_atom__alpha0eff[i] * numpy.dot(dipole_Me_1 , TiMe)
+			dipole_Me_2 += n_atom__alpha0eff[ion_index] * numpy.dot(n_atom_nohyd__dipole[i] , TMei)
+			
+	N = 0
+	while numpy.linalg.norm( dipole_Me_2 - dipole_Me_1 ) > 2.0819434e-8:           # 1D = 0.020819434 e*nm   10**(-6) D > e*nm 
+		
+		dipole_Me_1 = dipole_Me_2
+		
+		n_atom_nohyd__dipole ={}
+		dipole_Me_2 = n_atom__alpha0eff[ion_index] *  n_atom_nohyd__E0[ion_index]
+		for i in n_atom_nohyd:
+			if i != ion_index:
+				TiMe = get_Tij(n_atom__xyz, i, ion_index)
+				TMei = get_Tij(n_atom__xyz, ion_index, i)
+				
+				n_atom_nohyd__dipole[i] = n_atom__alpha0eff[i] *  n_atom_nohyd__E0[i] + n_atom__alpha0eff[i] * numpy.dot(dipole_Me_1 , TiMe)
+				dipole_Me_2 += n_atom__alpha0eff[ion_index] * numpy.dot(n_atom_nohyd__dipole[i] , TMei)
+		N += 1
+	
+	n_atom_nohyd__dipole[ion_index] = dipole_Me_2
+	
+	return(n_atom_nohyd__dipole, n_atom_nohyd__E0)
+	
 ##########################################################################################################################
 # parameter file we choose
 force_file = str(sys.argv[1])
@@ -191,7 +306,8 @@ for file in os.listdir(pdb_folder):
 		 CN_factor, \
 		 f15, \
 		 type__ChargeTransfer_parameters, \
-		 type__zero_transfer_distance        = get_custombondforce_para()
+		 type__zero_transfer_distance, \
+		 type__averageAlpha0eff                 = get_custombondforce_para()
 		
 		for pair in pairs_14__para.keys():
 			pairs_vdw.addBond(pair[0], pair[1], [0.5, pairs_14__para[pair][0], pairs_14__para[pair][1]] )
@@ -217,15 +333,14 @@ for file in os.listdir(pdb_folder):
 					polar_index.append(atom_index)
 			
 			# get CN
-			if CN_factor != 'No_CN_factor':
-				cation_pairs = []		
-				for i in polar_index:
-					if i < ion_index:
-						cation_pairs.append((i, ion_index))
-					else:
-						cation_pairs.append((ion_index, i))
-						
-				CN = get_CN(n_atom__xyz, cation_pairs, type__zero_transfer_distance)
+			cation_pairs = []		
+			for i in polar_index:
+				if i < ion_index:
+					cation_pairs.append((i, ion_index))
+				else:
+					cation_pairs.append((ion_index, i))
+					
+			CN = get_CN(n_atom__xyz, cation_pairs, type__zero_transfer_distance)
 			
 			# load nonbondedforce
 			forces = { force.__class__.__name__ : force for force in system.getForces() }
@@ -238,13 +353,13 @@ for file in os.listdir(pdb_folder):
 				
 				# charge
 				[charge, sigma, epsilon] = nbforce.getParticleParameters(index)
-				
+
 				if n_atom__type[index] in type__ChargeTransfer_parameters.keys():
 					r = get_distance(index, ion_index, n_atom__xyz)
 					
 					# only consider r <= zero_transfer_distance 
 					if r < type__zero_transfer_distance[n_atom__type[index]] :
-						if (CN_factor == 'No_CN_factor') or (CN == 1) or (CN_factor == 'No_Charge_transfer'):
+						if (CN == 1) or (CN_factor == 'No_Charge_transfer'):
 							transq = (type__ChargeTransfer_parameters[n_atom__type[index]][0] * r + type__ChargeTransfer_parameters[n_atom__type[index]][1]) * (math.sqrt(f15))
 						else:
 							transq = ( type__ChargeTransfer_parameters[n_atom__type[index]][0] * r + type__ChargeTransfer_parameters[n_atom__type[index]][1] ) * (math.sqrt(f15)) / math.pow( CN, 1.0/float(CN_factor) ) 
@@ -259,6 +374,7 @@ for file in os.listdir(pdb_folder):
 			charge_ion = ( charge/charge.unit - total_transq ) * charge.unit
 			nbforce.setParticleParameters(ion_index, charge_ion, sigma, epsilon )
 	
+	
 			nonbonded_force = forces['NonbondedForce']
 			index__charge = {}
 			for index in range(nonbonded_force.getNumParticles()):
@@ -270,14 +386,60 @@ for file in os.listdir(pdb_folder):
 				if q._value != 0.0:
 					q_new = index__charge[p1] * index__charge[p2] * f14
 					nonbonded_force.setExceptionParameters(i, p1, p2, q_new, sig, eps)
-	
+		
+		# implement polarization energy
+		if type__averageAlpha0eff:
+			
+			# implement polarization energy, ev > kJ/mol
+			pol_force = openmm.CustomExternalForce(' -0.5 * 96.485309 * ( dipole0 * E0 + dipole1 * E1 + dipole2 * E2) ')      
+			
+			pol_force.addPerParticleParameter("dipole0")
+			pol_force.addPerParticleParameter("dipole1")
+			pol_force.addPerParticleParameter("dipole2")
+			pol_force.addPerParticleParameter("E0")
+			pol_force.addPerParticleParameter("E1")
+			pol_force.addPerParticleParameter("E2")
+			
+			# get n_atom_nohyd list, ion_index
+			n_atom_nohyd = []
+			for (atom_index, atom) in enumerate(pdb.topology.atoms()):
+				if atom.element.symbol == 'Zn' or atom.element.symbol == 'Na':
+					ion_index = atom_index
+					n_atom_nohyd.append(ion_index)
+				elif atom.element.symbol != 'H':
+					n_atom_nohyd.append(atom_index)
+			
+			# n_atom_nohyd__alpha0eff
+			n_atom_nohyd__alpha0eff = {}
+			for index in n_atom_nohyd:
+				n_atom_nohyd__alpha0eff[index] = type__averageAlpha0eff[ n_atom__type[index] ]
+			
+			# get E0
+			n_atom__charge = {}
+			# load nonbondedforce
+			forces = { force.__class__.__name__ : force for force in system.getForces() }
+			nonbonded_force = forces['NonbondedForce']
+			for index in range(nonbonded_force.getNumParticles()):
+				[charge, sigma, epsilon] = nonbonded_force.getParticleParameters(index)
+				n_atom__charge[index] = charge/charge.unit
+			
+			n_atom__xyz = get_pdb__info(os.path.join(pdb_folder, file))
+			
+			#get induced dipole
+			n_atom_nohyd__dipole, n_atom_nohyd__E0 = get_induced_dipole(n_atom__xyz, n_atom_nohyd__alpha0eff, n_atom__charge, n_atom_nohyd, ion_index)
+			
+			for index in n_atom_nohyd:
+				pol_force.addParticle( index, [ n_atom_nohyd__dipole[index][0], n_atom_nohyd__dipole[index][1], n_atom_nohyd__dipole[index][2], n_atom_nohyd__E0[index][0], n_atom_nohyd__E0[index][1], n_atom_nohyd__E0[index][2] ] )
+				
+			system.addForce(pol_force)	
+		
+		
 	integrator = VerletIntegrator(0.002*picoseconds)
 	simulation = Simulation(pdb.topology, system, integrator)
 	
 	simulation.context.setPositions(pdb.positions)
-	state = simulation.context.getState(getEnergy=True)
+	state = simulation.context.getState(getEnergy=True) # getForces =True)
 	
-		
 	savedStdout = sys.stdout
 	sys.stdout = f
 	print(file.split('.')[0], state.getPotentialEnergy()/4.184/kilojoules_per_mole) 

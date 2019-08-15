@@ -9,7 +9,7 @@ import operator
 import pandas
 import re
 import ast
-
+import time
 from simtk.openmm.app import *
 from simtk.openmm.app.internal import *
 from simtk.openmm import *
@@ -91,7 +91,8 @@ def main():
 	 list_14_interacts, \
 	 origFF___CN_factor, \
 	 origFF___type__zero_transfer_distance, \
-	 origFF___type__ChargeTransfer_parameters = get_originalFF_params()
+	 origFF___type__ChargeTransfer_parameters, \
+	 origFF___type__averageAlpha0eff = get_originalFF_params()
 	
 	# get pair-wise charge parameters (original FF) for Coulomb interactions
 	origFF___pairs__charge = get_charge_pairs_params(origFF___type__charge)
@@ -133,6 +134,8 @@ def main():
 	listofdicts_logfiles___n_atom__xyz, \
 	 index__listofdicts_logfiles___n_atom__xyz= get_logfiles_xyz()
 	
+	# polarizibility from FHI-aims
+	#origFF___type__averageAlpha0eff, origFF___n_atom__alpha0eff = get_alpha0eff()
 	
 	# fine-tune r0 (or not)
 	if dict_keywords['fine_tune_r0'] == True:
@@ -154,10 +157,20 @@ def main():
 			newFF___type__charge = get_average_charge()
 	elif dict_keywords['fine_tune_charge_transfer'] == True:
 		newFF___type__charge = get_type__isolated_charge(origFF___type__charge)
-		
-		
+	
+	
 	# get pair-wise charge parameters (new FF) for Coulomb interactions, No charge transfer
 	newFF___pairs__charge = get_charge_pairs_params(newFF___type__charge)
+	
+	# get newFF___type__averageAlpha0eff
+	if dict_keywords['fine_tune_polarization_energy'] == True:
+		if dict_keywords['fine_tune_polarizabilities'] == False:
+			if origFF___type__averageAlpha0eff:
+				newFF___type__averageAlpha0eff = copy.deepcopy(origFF___type__averageAlpha0eff)
+			else:
+				newFF___type__averageAlpha0eff = get_alpha0eff()
+	elif dict_keywords['fine_tune_polarization_energy'] == False:
+		newFF___type__averageAlpha0eff = {}
 	
 	# fine-tune charge transfer (or not)
 	if dict_keywords['fine_tune_charge_transfer'] == False:
@@ -181,7 +194,8 @@ def main():
 							   origFF___pairs__sigma, \
 							   origFF___pairs__epsilon, \
 							   newFF___pairs__charge, \
-							   newFF___type__charge)
+							   newFF___type__charge, \
+							   newFF___type__averageAlpha0eff)
 	
 	# fine-tune sigma parameters for (type)pairs from TS using R0eff (or not)
 	if dict_keywords['fine_tune_sigma'] == 'False':
@@ -196,7 +210,7 @@ def main():
 																   newFF___pairs__sigma)
 			newFF___typepairs__sigma = set_some_dict_entries_zero(origFF___typepairs__sigma, \
 																   newFF___typepairs__sigma)
-
+    
 	# fine-tune epsilon parameters for (type)pairs from TS (or not)
 	#   (if regression on either TS or MBD or total energies is requested, we do it later)
 	if dict_keywords['fine_tune_epsilon'] == 'False':
@@ -211,7 +225,32 @@ def main():
 																	  newFF___pairs__epsilon)
 			newFF___typepairs__epsilon = set_some_dict_entries_zero(origFF___typepairs__epsilon, \
 																	  newFF___typepairs__epsilon)
-														  
+	
+	# include polarization energy (or not)
+	# tune polarizabilities (or not)												  
+	if dict_keywords['fine_tune_polarization_energy'] == True:
+		#if dict_keywords['fine_tune_polarizabilities'] == False:
+		#	if origFF___type__averageAlpha0eff:
+		#		newFF___type__averageAlpha0eff = copy.deepcopy(origFF___type__averageAlpha0eff)
+		#	else:
+		#		newFF___type__averageAlpha0eff = get_alpha0eff()
+		if dict_keywords['fine_tune_polarizabilities'] == True:
+			newFF___type__averageAlpha0eff, fopt_pol = get_polarizabilities_PSO(origFF___classpair__Kb, \
+																		newFF___classpair__r0, \
+																		origFF___classtriple__Ktheta, \
+																		newFF___classtriple__theta0, \
+																		origFF___classquadruple__V1, \
+																		origFF___classquadruple__V2, \
+																		origFF___classquadruple__V3, \
+																		origFF___classquadruple__V4, \
+																		origFF___classquadruple__impV2, \
+																		origFF___pairs__sigma, \
+																		origFF___pairs__epsilon, \
+																		newFF___pairs__charge, \
+																		newFF___type__charge, \
+																		newFF___CN_factor, \
+																		newFF___type__zero_transfer_distance, \
+																		newFF___type__ChargeTransfer_parameters)
 	
 													  
 	########################################################################################
@@ -251,6 +290,11 @@ def main():
 	#       impv2 * (1 + cos (2θ − θ0 ))
 	get_improper_energies(origFF___classquadruple__impV2)
 	
+	# get polarization energies with alpha from FHI-aims
+	# -> polarization terms are of form:
+	#       -0.5 * dipole * E0
+	get_polarization_energies(newFF___type__averageAlpha0eff, newFF___type__charge, newFF___CN_factor, newFF___type__zero_transfer_distance, newFF___type__ChargeTransfer_parameters)
+	
 	# get Coulomb energies with newFF parameters
 	# -> Coulomb terms are of form: f * q1*q2 / r12
 	#          {   0 for 1-2-interactions and 1-3-interactions
@@ -282,20 +326,20 @@ def main():
 	#    with pandas.option_context('display.max_rows', 999, 'display.max_columns', 999):
 	#        print(data.head())
 	#        print(data)
-
+    
 	# get bonding energy contributions classpair-wise
 	#   (not really useful at the moment but I put it in just for completeness
 	#    and in case I need this function in the future for some reason)
 	# -> bonding contributions are of form: 0.5 * (r-r0)**2
 #    get_bondEnergyContribs(newFF___classpair__r0)
-
+    
 	# get angles energy contributions classtriple-wise
 	#   (not really useful at the moment but I put it in just for completeness
 	#    and in case I need this function in the future for some reason)
 	# -> angles bending contributions are of form: (theta-theta0)**2
 #    get_anglesEnergyContribs(newFF___classtriple__theta0)
-
-
+    
+    
 	# get improper torsions energy contributions classquadruple-wise
 	#   (not really useful at the moment but I put it in just for completeness
 	#    and in case I need this function in the future for some reason)
@@ -359,7 +403,7 @@ def main():
 	# θ0 is the phase offset, and k is the force constant
 	get_torsions_energies(newFF___classquadruple__V1, newFF___classquadruple__V2, newFF___classquadruple__V3, newFF___classquadruple__V4, 'Etorsions_(FF)')	
 		
-
+    
 	# do regression to estimate improper torsional parameters (impV2)
 	if dict_keywords['fine_tune_imptorsionalV'] == True:
 		newFF___collect_classquadruple__impV2, \
@@ -372,16 +416,33 @@ def main():
 				newFF___collect_classquadruple__impV2[ (0, 0, atuple[2], atuple[3]) ] = newFF___classquadruple__impV2[ atuple ]
 			elif atuple[2] == 24 or atuple[2] == 47 or atuple[2] == 48:
 				newFF___collect_classquadruple__impV2[ (0, 0, atuple[2], 0) ] = newFF___classquadruple__impV2[ atuple ]
-				
-	#print(newFF___classquadruple__impV2)
 	
+	#print(newFF___classquadruple__impV2)
+	#energy_list = get_FF_energy(origFF___classpair__Kb, \
+	#				newFF___classpair__r0, \
+	#				origFF___classtriple__Ktheta, \
+	#				newFF___classtriple__theta0, \
+	#				newFF___classquadruple__V1, \
+	#				newFF___classquadruple__V2, \
+	#				newFF___classquadruple__V3, \
+	#				newFF___classquadruple__V4, \
+	#				newFF___classquadruple__impV2, \
+	#				newFF___pairs__sigma, \
+	#				newFF___pairs__epsilon, \
+	#				newFF___pairs__charge, \
+	#				newFF___type__charge, \
+	#				newFF___CN_factor, \
+	#				newFF___type__zero_transfer_distance, \
+	#				newFF___type__ChargeTransfer_parameters, \
+	#				newFF___type__averageAlpha0eff)
+	#print(energy_list)
 	############################################################
 	# print all kinds of information
 	############################################################
 	
 	# print atom type/class overview
 	print_atom_type_class_overview()
-
+    
 	# print original and new r0 parameters classpair-wise, and kB parameters (unaltered))
 	print_r0_kB_params(origFF___classpair__r0, newFF___classpair__r0, origFF___classpair__Kb)
 	
@@ -415,6 +476,9 @@ def main():
 	# print charge transfer parameters
 	print_charge_transfer_params(newFF___CN_factor, newFF___type__zero_transfer_distance, newFF___type__ChargeTransfer_parameters, fopt)
 	
+	# print polarization parameters
+	print_polarization_params(newFF___type__averageAlpha0eff)
+	
 	# write OpenMM force field parameter file
 	write_OpenMM_ff_params_file(newFF___classpair__r0, \
 								 origFF___classpair__Kb, \
@@ -430,21 +494,22 @@ def main():
 								 newFF___typepairs__epsilon, \
 								 newFF___type__charge, \
 								 f14, f15)
-
+    
 	# write Custombond force parameter file
 	write_custombondforce_para(newFF___pairs__sigma, \
 								newFF___pairs__epsilon, \
 								newFF___CN_factor, \
 								f15, \
-                                newFF___type__zero_transfer_distance, \
-		                        newFF___type__ChargeTransfer_parameters)
+                               newFF___type__zero_transfer_distance, \
+		                        newFF___type__ChargeTransfer_parameters, \
+	                            newFF___type__averageAlpha0eff)
 								
 	
 	#for atupe in list_imp1234_interacts:
 	#	print(atupe)
 	#	print(n_atom__class[atupe[0]],n_atom__class[atupe[1]], n_atom__class[atupe[2]],n_atom__class[atupe[3]])
 	#print(newFF___classquadruple__impV2)
-
+    
 	print("========")
 	print("Goodbye!"  )
 	print("========\n")
@@ -657,6 +722,21 @@ def get_input():
 				
 	if ( dict_keywords['fine_tune_charge'] != 'False' ) and ( dict_keywords['fine_tune_charge_transfer'] == True ):
 		sys.exit('== Error: Average charges and charge transfer can not be used at the same time. Check input file \'ffaffurr.input\'. Exiting now...')
+		
+	astring = get_input_loop_lines(lines, 'fine_tune_polarization_energy')
+	if astring in ['True', 'true']:
+		dict_keywords['fine_tune_polarization_energy'] = True
+	elif astring in ['False', 'false']:
+		dict_keywords['fine_tune_polarization_energy'] = False
+	else:
+		sys.exit('== Error: keyword \'fine_tune_polarization_energy\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
+		
+	if ( dict_keywords['fine_tune_polarization_energy'] == True ):
+		astring = get_input_loop_lines(lines, 'fine_tune_polarizabilities')
+		if astring in ['False', 'false']:
+			dict_keywords['fine_tune_polarizabilities'] = False
+		elif astring in ['True', 'true']:
+			dict_keywords['fine_tune_polarizabilities'] = True
 		
 	print('\n====\n')
 
@@ -1023,9 +1103,11 @@ def get_originalFF_params():
 		CN_factor = 0
 		type__zero_transfer_distance = {}
 		type__ChargeTransfer_parameters = {}
+		type__averageAlpha0eff = {}
 	elif dict_keywords['readparamsfromffaffurr'] == True:
 		type__ChargeTransfer_parameters = {}
 		type__zero_transfer_distance = {}
+		type__averageAlpha0eff = {}
 		
 		tree = ET.ElementTree(file='CustomForce.xml')
 		
@@ -1034,7 +1116,10 @@ def get_originalFF_params():
 		for atom in tree.getroot().find('CustomChargeTransfer').findall('Atom'):
 			type__ChargeTransfer_parameters[atom.attrib['type']] = [float(atom.attrib['a']), float(atom.attrib['b'])]
 			type__zero_transfer_distance[atom.attrib['type']] = float(atom.attrib['r'])
-		
+			
+		if tree.getroot().find('CustomPoleForce') is not None:
+			for atom in tree.getroot().find('CustomPoleForce').findall('Polarize'):
+				type__averageAlpha0eff[ atom.attrib['type'] ] = float( atom.attrib['polarizability'] )	
 	
 	return(n_atoms, \
 			residues__atoms, \
@@ -1066,7 +1151,8 @@ def get_originalFF_params():
 			list_14_interacts, \
 			CN_factor, \
 			type__zero_transfer_distance, \
-			type__ChargeTransfer_parameters)
+			type__ChargeTransfer_parameters,\
+			type__averageAlpha0eff)
 
 ############################################################
 # get pair-wise charge parameters for Coulomb interactions
@@ -1610,10 +1696,16 @@ def get_FF_energy(classpair__Kb, \
 					type__charge, \
 					CN_factor, \
 					type__zero_transfer_distance, \
-					type__ChargeTransfer_parameters):
+					type__ChargeTransfer_parameters, \
+					type__averageAlpha0eff):
+	
+	type__averageR0eff = get_R0eff()
 						
 	index__Energies_FF = {}
 	for index, n_atom__xyz in index__listofdicts_logfiles___n_atom__xyz.items():
+		
+		index = '{:04d}'.format(int(index))
+		#print(index)
 		
 		# get distances between any two atoms
 		pairs__distances = get_distances(n_atom__xyz)
@@ -1647,6 +1739,7 @@ def get_FF_energy(classpair__Kb, \
 		
 		# get total torsions energy
 		Etotorsion = Etorsions + Eimprops
+		#print('Etottorsion: ', Etotorsion/4.184)
 		
 		# get vdW energy
 		Evdw = get_vdW_energy(pairs__distances, pairs__sigma, pairs__epsilon)
@@ -1659,10 +1752,14 @@ def get_FF_energy(classpair__Kb, \
 		# get Nonbonded energy
 		Enonb = Evdw + Ecoul
 		
-		Energy_FF = Ebonds + Eangles + Etotorsion + Enonb
+		# get polarization energy
+		Epol = get_polarization_energy(n_atom__xyz, pairs__distances, type__averageAlpha0eff, type__averageR0eff, type__charge, CN_factor, type__zero_transfer_distance, type__ChargeTransfer_parameters)
+		#print('Epol: ', Epol/4.184)
+		
+		Energy_FF = Ebonds + Eangles + Etotorsion + Enonb + Epol
 		#print('FF : ', Energy_FF/4.184)
 		
-		index__Energies_FF[index] = Energy_FF/4.184
+		index__Energies_FF[index] = Energy_FF/4.184          #kJ/mol > kcal/mol
 		
 	return(index__Energies_FF)
 
@@ -1684,7 +1781,8 @@ def get_MAE(classpair__Kb, \
 			 type__charge, \
 			 CN_factor, \
 			 type__zero_transfer_distance, \
-			 type__ChargeTransfer_parameters):
+			 type__ChargeTransfer_parameters, \
+			 type__averageAlpha0eff):
 				 
 	index__Energies_FF = get_FF_energy(classpair__Kb, \
 					classpair__r0, \
@@ -1701,7 +1799,8 @@ def get_MAE(classpair__Kb, \
 					type__charge, \
 					CN_factor, \
 					type__zero_transfer_distance, \
-					type__ChargeTransfer_parameters)
+					type__ChargeTransfer_parameters,\
+					type__averageAlpha0eff)
 	
 	index__Energies_DFT = {}
 	with open(os.path.join(os.getcwd(), 'energies.pbe+vdw_training.kcal'), 'r') as DFT_energy:
@@ -1710,7 +1809,6 @@ def get_MAE(classpair__Kb, \
 		for line in lines:
 			index = line.split(None, 1)[0]
 			index__Energies_DFT[index] = float(line.split(None, 1)[1])
-		
 		
 	#MAE
 	x_data = []
@@ -2061,80 +2159,80 @@ def get_R0free():
 	
 	for i in range(n_atoms):
 		if n_atom__atomic[i] == 1:
-			n_atom__R0free[i] = 3.1000/2.
+			n_atom__R0free[i] = 3.1000 * 0.5291772
 		elif n_atom__atomic[i] == 2:     
-			n_atom__R0free[i] = 2.6500/2.
-		elif n_atom__atomic[i] == 3:     
-			n_atom__R0free[i] = 4.1600/2.
-		elif n_atom__atomic[i] == 4:     
-			n_atom__R0free[i] = 4.1700/2.
-		elif n_atom__atomic[i] == 5:     
-			n_atom__R0free[i] = 3.8900/2.
-		elif n_atom__atomic[i] == 6:     
-			n_atom__R0free[i] = 3.5900/2.
-		elif n_atom__atomic[i] == 7:     
-			n_atom__R0free[i] = 3.3400/2.
-		elif n_atom__atomic[i] == 8:     
-			n_atom__R0free[i] = 3.1900/2.
-		elif n_atom__atomic[i] == 9:     
-			n_atom__R0free[i] = 3.0400/2.
-		elif n_atom__atomic[i] == 10:    
-			n_atom__R0free[i] = 2.9100/2.
-		elif n_atom__atomic[i] == 11:    
-			n_atom__R0free[i] = 3.7300/2.
-		elif n_atom__atomic[i] == 12:    
-			n_atom__R0free[i] = 4.2700/2.
-		elif n_atom__atomic[i] == 13:    
-			n_atom__R0free[i] = 4.3300/2.
-		elif n_atom__atomic[i] == 14:    
-			n_atom__R0free[i] = 4.2000/2.
-		elif n_atom__atomic[i] == 15:    
-			n_atom__R0free[i] = 4.0100/2.
-		elif n_atom__atomic[i] == 16:    
-			n_atom__R0free[i] = 3.8600/2.
-		elif n_atom__atomic[i] == 17:    
-			n_atom__R0free[i] = 3.7100/2.
-		elif n_atom__atomic[i] == 18:    
-			n_atom__R0free[i] = 3.5500/2.
-		elif n_atom__atomic[i] == 19:    
-			n_atom__R0free[i] = 3.7100/2.
-		elif n_atom__atomic[i] == 20:    
-			n_atom__R0free[i] = 4.6500/2.
-		elif n_atom__atomic[i] == 21:    
-			n_atom__R0free[i] = 4.5900/2.
-		elif n_atom__atomic[i] == 22:    
-			n_atom__R0free[i] = 4.5100/2.
-		elif n_atom__atomic[i] == 23:    
-			n_atom__R0free[i] = 4.4400/2.
-		elif n_atom__atomic[i] == 24:    
-			n_atom__R0free[i] = 3.9900/2.
-		elif n_atom__atomic[i] == 25:    
-			n_atom__R0free[i] = 3.9700/2.
-		elif n_atom__atomic[i] == 26:    
-			n_atom__R0free[i] = 4.2300/2.
-		elif n_atom__atomic[i] == 27:    
-			n_atom__R0free[i] = 4.1800/2.
-		elif n_atom__atomic[i] == 28:    
-			n_atom__R0free[i] = 3.8200/2.
-		elif n_atom__atomic[i] == 29:    
-			n_atom__R0free[i] = 3.7600/2.
-		elif n_atom__atomic[i] == 30:    
-			n_atom__R0free[i] = 4.0200/2.
-		elif n_atom__atomic[i] == 31:    
-			n_atom__R0free[i] = 4.1900/2.
-		elif n_atom__atomic[i] == 32:    
-			n_atom__R0free[i] = 4.2000/2.
-		elif n_atom__atomic[i] == 33:    
-			n_atom__R0free[i] = 4.1100/2.
-		elif n_atom__atomic[i] == 34:    
-			n_atom__R0free[i] = 4.0400/2.
-		elif n_atom__atomic[i] == 35:    
-			n_atom__R0free[i] = 3.9300/2.
-		elif n_atom__atomic[i] == 36:    
-			n_atom__R0free[i] = 3.8200/2.
+			n_atom__R0free[i] = 2.6500 * 0.5291772
+		elif n_atom__atomic[i] == 3:  
+			n_atom__R0free[i] = 4.1600 * 0.5291772
+		elif n_atom__atomic[i] == 4:  
+			n_atom__R0free[i] = 4.1700 * 0.5291772
+		elif n_atom__atomic[i] == 5:  
+			n_atom__R0free[i] = 3.8900 * 0.5291772
+		elif n_atom__atomic[i] == 6:  
+			n_atom__R0free[i] = 3.5900 * 0.5291772
+		elif n_atom__atomic[i] == 7:  
+			n_atom__R0free[i] = 3.3400 * 0.5291772
+		elif n_atom__atomic[i] == 8:  
+			n_atom__R0free[i] = 3.1900 * 0.5291772
+		elif n_atom__atomic[i] == 9:  
+			n_atom__R0free[i] = 3.0400 * 0.5291772
+		elif n_atom__atomic[i] == 10: 
+			n_atom__R0free[i] = 2.9100 * 0.5291772
+		elif n_atom__atomic[i] == 11: 
+			n_atom__R0free[i] = 3.7300 * 0.5291772
+		elif n_atom__atomic[i] == 12: 
+			n_atom__R0free[i] = 4.2700 * 0.5291772
+		elif n_atom__atomic[i] == 13: 
+			n_atom__R0free[i] = 4.3300 * 0.5291772
+		elif n_atom__atomic[i] == 14: 
+			n_atom__R0free[i] = 4.2000 * 0.5291772
+		elif n_atom__atomic[i] == 15: 
+			n_atom__R0free[i] = 4.0100 * 0.5291772
+		elif n_atom__atomic[i] == 16: 
+			n_atom__R0free[i] = 3.8600 * 0.5291772
+		elif n_atom__atomic[i] == 17: 
+			n_atom__R0free[i] = 3.7100 * 0.5291772
+		elif n_atom__atomic[i] == 18: 
+			n_atom__R0free[i] = 3.5500 * 0.5291772
+		elif n_atom__atomic[i] == 19: 
+			n_atom__R0free[i] = 3.7100 * 0.5291772
+		elif n_atom__atomic[i] == 20: 
+			n_atom__R0free[i] = 4.6500 * 0.5291772
+		elif n_atom__atomic[i] == 21: 
+			n_atom__R0free[i] = 4.5900 * 0.5291772
+		elif n_atom__atomic[i] == 22: 
+			n_atom__R0free[i] = 4.5100 * 0.5291772
+		elif n_atom__atomic[i] == 23: 
+			n_atom__R0free[i] = 4.4400 * 0.5291772
+		elif n_atom__atomic[i] == 24: 
+			n_atom__R0free[i] = 3.9900 * 0.5291772
+		elif n_atom__atomic[i] == 25: 
+			n_atom__R0free[i] = 3.9700 * 0.5291772
+		elif n_atom__atomic[i] == 26: 
+			n_atom__R0free[i] = 4.2300 * 0.5291772
+		elif n_atom__atomic[i] == 27: 
+			n_atom__R0free[i] = 4.1800 * 0.5291772
+		elif n_atom__atomic[i] == 28: 
+			n_atom__R0free[i] = 3.8200 * 0.5291772
+		elif n_atom__atomic[i] == 29: 
+			n_atom__R0free[i] = 3.7600 * 0.5291772
+		elif n_atom__atomic[i] == 30: 
+			n_atom__R0free[i] = 4.0200 * 0.5291772
+		elif n_atom__atomic[i] == 31: 
+			n_atom__R0free[i] = 4.1900 * 0.5291772
+		elif n_atom__atomic[i] == 32: 
+			n_atom__R0free[i] = 4.2000 * 0.5291772
+		elif n_atom__atomic[i] == 33: 
+			n_atom__R0free[i] = 4.1100 * 0.5291772
+		elif n_atom__atomic[i] == 34: 
+			n_atom__R0free[i] = 4.0400 * 0.5291772
+		elif n_atom__atomic[i] == 35: 
+			n_atom__R0free[i] = 3.9300 * 0.5291772
+		elif n_atom__atomic[i] == 36: 
+			n_atom__R0free[i] = 3.8200 * 0.5291772
 		else:
 			sys.exit('== Error: Current implementation of free vdW radii only for elements up to Kr. Exiting now...')
-	
+	# bohr > angstrom
 	return(n_atom__R0free)
 
 ############################################################
@@ -2192,11 +2290,11 @@ def set_some_dict_entries_zero(dict1, dict2):
 	return(dict2)
 
 ############################################################
-# fine-tune and get (type)pair-wise sigmas from TS (using R0eff)
+# get R0eff
 ############################################################
 
-def get_sigmas_TS():
-
+def get_R0eff():
+	
 	sortedlist_types = []
 	for n_atom,atype in n_atom__type.items():
 		sortedlist_types.append( atype )
@@ -2224,6 +2322,16 @@ def get_sigmas_TS():
 	# average R0eff
 	for atype in sortedlist_types:
 		type__averageR0eff[atype] = numpy.mean(type__collectedR0eff[ atype ])
+	
+	return(type__averageR0eff)
+
+############################################################
+# fine-tune and get (type)pair-wise sigmas from TS (using R0eff)
+############################################################
+
+def get_sigmas_TS():
+
+	type__averageR0eff = get_R0eff()
 	
 	pairs__sigma = {}
 	typepairs__sigma = {}
@@ -2719,24 +2827,25 @@ def do_regression_Coulomb_fudge_factors():
 	reg = LinearRegression(fit_intercept=True, normalize=False)
 	
 	# note that the vdW energy of the origFF is used here
-	data['Ehl-EvdW-Etorsions-Eimprops-Eangles-Ebonds'] = data['E_high-level (Ehl)'] \
+	data['Ehl-EvdW-Etorsions-Eimprops-Eangles-Ebonds-Epol'] = data['E_high-level (Ehl)'] \
 														- data['Evdw_(origFF)'] \
 														- data['Etorsions_(origFF)'] \
 														- data['Eimprops_(FF)'] \
 														- data['Eangles_(FF)'] \
-														- data['Ebonds_(FF)']
-	data['Ehl-Ecoul15plusIntacts-EvdW-Etorsions-Eimprops-Eangles-Ebonds'] \
-			= data['Ehl-EvdW-Etorsions-Eimprops-Eangles-Ebonds'] - data['Ecoul_(FF)_15plusIntacts']
+														- data['Ebonds_(FF)'] \
+														- data['Epol_(FF)']
+	data['Ehl-Ecoul15plusIntacts-EvdW-Etorsions-Eimprops-Eangles-Ebonds-Epol'] \
+			= data['Ehl-EvdW-Etorsions-Eimprops-Eangles-Ebonds-Epol'] - data['Ecoul_(FF)_15plusIntacts']
 	
 	if dict_keywords['fine_tune_only_f14'] == True:
-		reg.fit(data[predictors], data['Ehl-Ecoul15plusIntacts-EvdW-Etorsions-Eimprops-Eangles-Ebonds'])
+		reg.fit(data[predictors], data['Ehl-Ecoul15plusIntacts-EvdW-Etorsions-Eimprops-Eangles-Ebonds-Epol'])
 	elif dict_keywords['fine_tune_only_f14'] == False:
-		reg.fit(data[predictors], data['Ehl-EvdW-Etorsions-Eimprops-Eangles-Ebonds'])
+		reg.fit(data[predictors], data['Ehl-EvdW-Etorsions-Eimprops-Eangles-Ebonds-Epol'])
 	
 	# get some infos
 	if False:
 		y_pred = reg.predict(data[predictors])
-		rss = sum( (y_pred-data['Ehl-EvdW-Etorsions-Eimprops-Eangles-Ebonds'])**2. )
+		rss = sum( (y_pred-data['Ehl-EvdW-Etorsions-Eimprops-Eangles-Ebonds-Epol'])**2. )
 		print('RSS = ', rss)
 		print('intercept = ', reg.intercept_)
 		print('\n====\n')
@@ -3211,19 +3320,20 @@ def do_regression_epsilon_Tot(origFF___typepairs__epsilon):
 		elif dict_keywords['RestrictRegressionEpsilonPositive'] == False:
 			reg = Lasso(alpha=dict_keywords['regularization_parameter_epsilon'], fit_intercept=True, normalize=False, positive=False)
 	
-	data['Ehl-Ecoul-Etorsions-Eimprops-Eangles-Ebonds'] = data['E_high-level (Ehl)'] \
+	data['Ehl-Ecoul-Etorsions-Eimprops-Eangles-Ebonds-Epol'] = data['E_high-level (Ehl)'] \
 																	- data['Ecoul_(FF)'] \
 																	- data['Etorsions_(origFF)'] \
 																	- data['Eimprops_(FF)'] \
 																	- data['Eangles_(FF)'] \
-																	- data['Ebonds_(FF)']
+																	- data['Ebonds_(FF)'] \
+																	- data['Epol_(FF)']
 	
-	reg.fit(data[predictors], data['Ehl-Ecoul-Etorsions-Eimprops-Eangles-Ebonds'])
+	reg.fit(data[predictors], data['Ehl-Ecoul-Etorsions-Eimprops-Eangles-Ebonds-Epol'])
 	
 	# get some infos
 	if True:
 		y_pred = reg.predict(data[predictors])
-		rss = sum( (y_pred-data['Ehl-Ecoul-Etorsions-Eimprops-Eangles-Ebonds'])**2. )
+		rss = sum( (y_pred-data['Ehl-Ecoul-Etorsions-Eimprops-Eangles-Ebonds-Epol'])**2. )
 #        print('RSS = ', rss)
 #        print('\n====\n')
 #        print('intercept = ', reg.intercept_)
@@ -3279,19 +3389,20 @@ def do_regression_torsionalV(origFF___classquadruple__V1,origFF___classquadruple
 	elif dict_keywords['Regression_torsionalV_Method'] == 'Lasso':
 		reg = Lasso(alpha=dict_keywords['regularization_parameter_torsionalV'], fit_intercept=True, normalize=False)
 	
-	data['Ehl-Ecoul-Evdw-Eimprops-Eangles-Ebonds'] = data['E_high-level (Ehl)'] \
+	data['Ehl-Ecoul-Evdw-Eimprops-Eangles-Ebonds-Epol'] = data['E_high-level (Ehl)'] \
 													- data['Ecoul_(FF)'] \
 													- data['Evdw_(FF)'] \
 													- data['Eimprops_(FF)'] \
 													- data['Eangles_(FF)'] \
-													- data['Ebonds_(FF)']
+													- data['Ebonds_(FF)'] \
+													- data['Epol_(FF)']
 	
-	reg.fit(data[predictors], data['Ehl-Ecoul-Evdw-Eimprops-Eangles-Ebonds'])
+	reg.fit(data[predictors], data['Ehl-Ecoul-Evdw-Eimprops-Eangles-Ebonds-Epol'])
 	
 	# get some infos
 	if False:
 		y_pred = reg.predict(data[predictors])
-		rss = sum( (y_pred-data['Ehl-Ecoul-Evdw-Eimprops-Eangles-Ebonds'])**2. )
+		rss = sum( (y_pred-data['Ehl-Ecoul-Evdw-Eimprops-Eangles-Ebonds-Epol'])**2. )
 		print('RSS = ', rss)
 		print('\n====\n')
 		print('intercept = ', reg.intercept_)
@@ -3362,19 +3473,20 @@ def do_regression_imptorsionalV(origFF___classquadruple__impV2):
 		#elif dict_keywords['RestrictRegressionimpVPositive'] == False:
 			#reg = Lasso(alpha=dict_keywords['regularization_parameter_imptorsionalV'], fit_intercept=True, normalize=False, positive=False)        
 	
-	data['Ehl-Ecoul-Evdw-Etorsions-Eangles-Ebonds'] = data['E_high-level (Ehl)'] \
+	data['Ehl-Ecoul-Evdw-Etorsions-Eangles-Ebonds-Epol'] = data['E_high-level (Ehl)'] \
 														- data['Ecoul_(FF)'] \
 														- data['Evdw_(FF)'] \
 														- data['Etorsions_(FF)'] \
 														- data['Eangles_(FF)'] \
-														- data['Ebonds_(FF)']
+														- data['Ebonds_(FF)'] \
+														- data['Epol_(FF)']
 	
-	reg.fit(data[predictors], data['Ehl-Ecoul-Evdw-Etorsions-Eangles-Ebonds'])
+	reg.fit(data[predictors], data['Ehl-Ecoul-Evdw-Etorsions-Eangles-Ebonds-Epol'])
 	
 	# get some infos
 	if False:
 		y_pred = reg.predict(data[predictors])
-		rss = sum( (y_pred-data['Ehl-Ecoul-Evdw-Etorsions-Eangles-Ebonds'])**2. )
+		rss = sum( (y_pred-data['Ehl-Ecoul-Evdw-Etorsions-Eangles-Ebonds-Epol'])**2. )
 		print('RSS = ', rss)
 		print('\n====\n')
 	#       print('intercept = ', reg.intercept_)
@@ -3492,6 +3604,79 @@ def get_type__isolated_charge(type_charge):
 # get charge transfer parameters with Partical Swarm Optimization
 ############################################################
 
+# the target function that to be minimized
+def PSO_objective_ChargTrans(x, *args):
+	
+	type__polar = []
+		
+	for i in range(n_atoms):
+		if n_atom__atomic[i] == 8 or n_atom__atomic[i] == 16 or n_atom__atomic[i] == 7: 
+			type__polar.append(n_atom__type[i])
+	type__polar = list(set(type__polar))
+	
+	type__zero_transfer_distance = {}
+	type__ChargeTransfer_parameters = {}
+	for i in type__polar:
+		type__zero_transfer_distance[i] = 0
+		
+		slope = 0
+		offset = 0
+		
+		type__ChargeTransfer_parameters[i] = [slope, offset]
+		
+	a = -1
+		
+	a += 1
+	CN_factor = x[a]
+	
+	pso_type__zero_transfer_distance = {}
+	for key in type__zero_transfer_distance.keys():
+		a += 1
+		pso_type__zero_transfer_distance[key] = x[a]
+		
+	pso_type__ChargeTransfer_parameters = {}
+	for key in type__ChargeTransfer_parameters.keys():
+		a += 1
+		
+		slope = x[a]
+		offset = -1 * slope * pso_type__zero_transfer_distance[key]
+		pso_type__ChargeTransfer_parameters[key] = [ slope, offset]
+	
+	classpair__Kb, \
+	classpair__r0, \
+	classtriple__Ktheta, \
+	classtriple__theta0, \
+	classquadruple__V1, \
+	classquadruple__V2, \
+	classquadruple__V3, \
+	classquadruple__V4, \
+	classquadruple__impV2, \
+	pairs__sigma, \
+	pairs__epsilon, \
+	pairs__charge, \
+	type__charge, \
+	type__averageAlpha0eff = args
+	
+	MAE = get_MAE(classpair__Kb, \
+					classpair__r0, \
+					classtriple__Ktheta, \
+					classtriple__theta0, \
+					classquadruple__V1, \
+					classquadruple__V2, \
+					classquadruple__V3, \
+					classquadruple__V4, \
+					classquadruple__impV2, \
+					pairs__sigma, \
+					pairs__epsilon, \
+					pairs__charge, \
+					type__charge, \
+					CN_factor, \
+					pso_type__zero_transfer_distance, \
+					pso_type__ChargeTransfer_parameters, \
+					type__averageAlpha0eff)
+	
+	return(MAE)
+
 def PSO_optimize(classpair__Kb, \
 					classpair__r0, \
 					classtriple__Ktheta, \
@@ -3504,7 +3689,8 @@ def PSO_optimize(classpair__Kb, \
 					pairs__sigma, \
 					pairs__epsilon, \
 					pairs__charge, \
-					type__charge):
+					type__charge, \
+					type__averageAlpha0eff):
 	
 	type__polar   = []
 		
@@ -3523,46 +3709,22 @@ def PSO_optimize(classpair__Kb, \
 		
 		type__ChargeTransfer_parameters[i] = [slope, offset]
 	
-	# Define the objective (to be minimize)
-	def PSO_objective(x):
-		a = -1
 		
-		a += 1
-		CN_factor = x[a]
-		
-		pso_type__zero_transfer_distance = {}
-		for key in type__zero_transfer_distance.keys():
-			a += 1
-			pso_type__zero_transfer_distance[key] = x[a]
-			
-		pso_type__ChargeTransfer_parameters = {}
-		for key in type__ChargeTransfer_parameters.keys():
-			a += 1
-			
-			slope = x[a]
-			offset = -1 * slope * pso_type__zero_transfer_distance[key]
-			pso_type__ChargeTransfer_parameters[key] = [ slope, offset]
-		
-		
-		MAE = get_MAE(classpair__Kb, \
-						classpair__r0, \
-						classtriple__Ktheta, \
-						classtriple__theta0, \
-						classquadruple__V1, \
-						classquadruple__V2, \
-						classquadruple__V3, \
-						classquadruple__V4, \
-						classquadruple__impV2, \
-						pairs__sigma, \
-						pairs__epsilon, \
-						pairs__charge, \
-						type__charge, \
-						CN_factor, \
-						pso_type__zero_transfer_distance, \
-						pso_type__ChargeTransfer_parameters)
-					
-		return(MAE)
-		
+	args = (classpair__Kb, \
+			 classpair__r0, \
+			 classtriple__Ktheta, \
+			 classtriple__theta0, \
+			 classquadruple__V1, \
+			 classquadruple__V2, \
+			 classquadruple__V3, \
+			 classquadruple__V4, \
+			 classquadruple__impV2, \
+			 pairs__sigma, \
+			 pairs__epsilon, \
+			 pairs__charge, \
+			 type__charge, \
+			 type__averageAlpha0eff)
+	
 	# Define the lower and upper bounds respectively
 	lb = []
 	ub = []
@@ -3579,7 +3741,7 @@ def PSO_optimize(classpair__Kb, \
 		lb.append( -15 )
 		ub.append( 0 )
 			
-	xopt, fopt = pso(PSO_objective, lb, ub, maxiter=10000)
+	xopt, fopt = pso(PSO_objective_ChargTrans, lb, ub, maxiter=10000,  processes=4, args=args) 
 	
 	b = -1
 	
@@ -3601,7 +3763,115 @@ def PSO_optimize(classpair__Kb, \
 	
 	return(new___CN_factor, new___type__zero_transfer_distance, new___type__ChargeTransfer_parameters, fopt)
 
+############################################################
+# get atomic polarizabilities with Partical Swarm Optimization
+############################################################
 
+# Define the objective (to be minimize)
+def PSO_objective_polarizabilities(x, *args):
+	
+	type__averageAlpha0eff = get_alpha0eff()
+	
+	a = -1
+		
+	pso_type__averageAlpha0eff = {}
+	for key in type__averageAlpha0eff.keys():
+		a += 1
+		pso_type__averageAlpha0eff[key] = x[a]
+	
+	classpair__Kb, \
+	 classpair__r0, \
+	 classtriple__Ktheta, \
+	 classtriple__theta0, \
+	 classquadruple__V1, \
+	 classquadruple__V2, \
+	 classquadruple__V3, \
+	 classquadruple__V4, \
+	 classquadruple__impV2, \
+	 pairs__sigma, \
+	 pairs__epsilon, \
+	 pairs__charge, \
+	 type__charge, \
+	 CN_factor, \
+	 type__zero_transfer_distance, \
+	 type__ChargeTransfer_parameters = args
+	
+	MAE = get_MAE(classpair__Kb, \
+					classpair__r0, \
+					classtriple__Ktheta, \
+					classtriple__theta0, \
+					classquadruple__V1, \
+					classquadruple__V2, \
+					classquadruple__V3, \
+					classquadruple__V4, \
+					classquadruple__impV2, \
+					pairs__sigma, \
+					pairs__epsilon, \
+					pairs__charge, \
+					type__charge, \
+					CN_factor, \
+					type__zero_transfer_distance, \
+					type__ChargeTransfer_parameters, \
+					pso_type__averageAlpha0eff)
+			
+	return(MAE)
+
+def get_polarizabilities_PSO(classpair__Kb, \
+					classpair__r0, \
+					classtriple__Ktheta, \
+					classtriple__theta0, \
+					classquadruple__V1, \
+					classquadruple__V2, \
+					classquadruple__V3, \
+					classquadruple__V4, \
+					classquadruple__impV2, \
+					pairs__sigma, \
+					pairs__epsilon, \
+					pairs__charge, \
+					type__charge, \
+					CN_factor, \
+					type__zero_transfer_distance, \
+					type__ChargeTransfer_parameters):
+	
+	type__averageAlpha0eff = get_alpha0eff()
+		
+	args = (classpair__Kb, \
+			 classpair__r0, \
+			 classtriple__Ktheta, \
+			 classtriple__theta0, \
+			 classquadruple__V1, \
+			 classquadruple__V2, \
+			 classquadruple__V3, \
+			 classquadruple__V4, \
+			 classquadruple__impV2, \
+			 pairs__sigma, \
+			 pairs__epsilon, \
+			 pairs__charge, \
+			 type__charge, \
+			 CN_factor, \
+			 type__zero_transfer_distance, \
+			 type__ChargeTransfer_parameters)	
+		
+	# Define the lower and upper bounds respectively
+	lb = []
+	ub = []
+		
+	for key in type__averageAlpha0eff.keys():
+		lb.append( type__averageAlpha0eff[key] * 0.2 )
+		ub.append( type__averageAlpha0eff[key] * 3 )
+	
+			
+	xopt, fopt = pso(PSO_objective_polarizabilities, lb, ub, swarmsize = 40, maxiter=10000, processes=4, args=args)
+	
+	b = -1
+	
+	new___type__averageAlpha0eff = {}
+	for key in type__averageAlpha0eff.keys():
+		b += 1
+		new___type__averageAlpha0eff[key] = xopt[b]
+	
+	return(new___type__averageAlpha0eff, fopt)
+	
 ############################################################
 # get coordination number(CN) of cation
 ############################################################
@@ -3619,7 +3889,278 @@ def get_CN(pairs__distances, cation_pairs, type__zero_transfer_distance):
 				CN += 1
 	
 	return(CN)
+
+############################################################
+# get alpha0eff for polarization energy
+############################################################
+
+def get_alpha0eff():
 	
+	n_atom_nohyd = []
+	for i in range(n_atoms):
+		if class__element[n_atom__class[i]] != 'H':
+			n_atom_nohyd.append(i)
+	
+	sortedlist_types = []
+	for n_atom in n_atom_nohyd:
+		sortedlist_types.append( n_atom__type[n_atom] )
+	#for n_atom,atype in n_atom__type.items():
+	#	sortedlist_types.append( atype )
+	sortedlist_types = sorted(set(sortedlist_types))
+	
+	
+	type__collectedAlpha0eff = {}
+	for atype in sortedlist_types:
+		type__collectedAlpha0eff[atype] = []
+	
+	# get C6free, alpha0free atom-wise
+	n_atom__C6free, n_atom__alpha0free = get_C6free_alpha0free()
+	
+	for logfile in list_logfiles:
+	
+		# get free atom volumes & Hirshfeld volumes atom-wise
+		n_atom__free_atom_volume, n_atom__hirshfeld_volume = get_fhiaims_hirshfeld_volume(logfile)
+	
+		# calculate alpha0eff atom-wise and collect type-wise
+		for i in n_atom_nohyd:
+			
+			alpha0eff = ( n_atom__hirshfeld_volume[i] / n_atom__free_atom_volume[i] ) * n_atom__alpha0free[i]
+			type__collectedAlpha0eff[ n_atom__type[i] ].append( alpha0eff )
+	
+	type__averageAlpha0eff = {}
+	
+	# average alpha0eff
+	for atype in sortedlist_types:
+		type__averageAlpha0eff[atype] = numpy.mean(type__collectedAlpha0eff[ atype ]) * 0.5291772 ** 3 * 0.1 ** 3   # bohr ** 3 > angstrom ** 3 > nm ** 3
+		
+	return(type__averageAlpha0eff)
+
+############################################################
+# get Ei0 of logfile for polarization energy
+############################################################
+
+def get_Ei0(n_atom__xyz, pairs__distances, type__averageR0eff, type__charge, CN_factor, type__zero_transfer_distance, type__ChargeTransfer_parameters):
+	
+	# ion_index, polar_index
+	polar_index = []
+	n_atom_nohyd = []
+	n_atom__charge = {}
+	for i in range(n_atoms):
+		n_atom__charge[i] = type__charge[ n_atom__type[i] ]
+		if class__element[n_atom__class[i]] == 'Zn' or class__element[n_atom__class[i]] == 'Na':
+			ion_index = i
+		elif class__element[n_atom__class[i]] == 'S' or class__element[n_atom__class[i]] == 'O' or class__element[n_atom__class[i]] == 'N':
+			polar_index.append(i)
+			
+		if class__element[n_atom__class[i]] != 'H':
+			n_atom_nohyd.append(i)
+	
+	if type__ChargeTransfer_parameters:
+		
+		cation_pairs = []		
+		for i in polar_index:
+			if i < ion_index:
+				cation_pairs.append((i, ion_index))
+			else:
+				cation_pairs.append((ion_index, i))
+				
+		# get CN
+		CN = get_CN(pairs__distances, cation_pairs, type__zero_transfer_distance)
+		
+		total_transq = 0	
+		for pair in cation_pairs:
+			if n_atom__type[pair[0]] in type__ChargeTransfer_parameters.keys():
+				if pairs__distances[pair] <= type__zero_transfer_distance[n_atom__type[pair[0]]]:
+					if (CN_factor == 0):
+						transq = type__ChargeTransfer_parameters[n_atom__type[pair[0]]][0] * pairs__distances[pair] + type__ChargeTransfer_parameters[n_atom__type[pair[0]]][1]
+					else:
+						transq = ( type__ChargeTransfer_parameters[n_atom__type[pair[0]]][0] * pairs__distances[pair] + type__ChargeTransfer_parameters[n_atom__type[pair[0]]][1] ) / math.pow( CN, 1.0/float(CN_factor) ) 
+					total_transq += transq
+					n_atom__charge[pair[0]] += transq
+			elif n_atom__type[pair[1]] in type__ChargeTransfer_parameters.keys():
+				if pairs__distances[pair] <= type__zero_transfer_distance[n_atom__type[pair[1]]]:
+					if (CN_factor == 0):
+						transq = type__ChargeTransfer_parameters[n_atom__type[pair[1]]][0] * pairs__distances[pair] + type__ChargeTransfer_parameters[n_atom__type[pair[1]]][1]
+					else:
+						transq = ( type__ChargeTransfer_parameters[n_atom__type[pair[1]]][0] * pairs__distances[pair] + type__ChargeTransfer_parameters[n_atom__type[pair[1]]][1] ) / math.pow( CN, 1.0/float(CN_factor) ) 
+					total_transq += transq
+					n_atom__charge[pair[1]] += transq
+		
+		n_atom__charge[ion_index] = n_atom__charge[ion_index] - total_transq
+	
+	n_atom__E0 = {}
+	n_atom__E0[ion_index] = 0
+	
+	for i in n_atom_nohyd:
+		if i != ion_index:
+			vec_r_iMe = numpy.array( n_atom__xyz[ ion_index ] ) * 0.1 - numpy.array( n_atom__xyz[ i ] ) * 0.1         # angstrom > nm
+			vec_r_Mei = numpy.array( n_atom__xyz[ i ] ) * 0.1 - numpy.array( n_atom__xyz[ ion_index ] ) * 0.1
+			
+			
+			if i < ion_index:
+				pair = ( i, ion_index )
+			else:
+				pair = ( ion_index, i )
+				
+			r_iMe = pairs__distances[pair]
+			
+			# add r_cutoff
+			r_vdw_radius = type__averageR0eff[ n_atom__type[i] ] * 0.1 + type__averageR0eff[ n_atom__type[ion_index] ] * 0.1   # angstrom > nm
+			r_cutoff = 0.92 * r_vdw_radius
+			
+			if r_iMe <= r_cutoff:
+				r_iMe = r_cutoff
+			
+			factor_i = n_atom__charge[ ion_index ] / ( r_iMe ** 3 )
+			n_atom__E0[i] = factor_i * vec_r_iMe
+			
+			factor_Me = n_atom__charge[ i ] / ( r_iMe ** 3 )
+			n_atom__E0[ion_index] += factor_Me * vec_r_Mei
+	
+	#print(n_atom__E0)
+	return(n_atom__E0)
+	
+############################################################
+# get Tij of logfile for polarization energy
+############################################################
+
+def get_Tij(n_atom__xyz, pairs__distances, i, j, type__averageR0eff):
+	
+	vec_r_ij = numpy.array( n_atom__xyz[ j ] ) * 0.1 - numpy.array( n_atom__xyz[ i ] ) * 0.1         # angstrom > nm
+
+	#vec_r_ij = numpy.matrix( n_atom__xyz[ j ] ) * 0.1 - numpy.matrix( n_atom__xyz[ i ] ) * 0.1         # angstrom > nm
+	#vec_r_ij_T = vec_r_ij.transpose()
+	
+	if i < j:
+		pair = ( i, j )
+	else:
+		pair = ( j, i )
+		
+	r_ij = pairs__distances[pair]
+	
+	# add r_cutoff
+	r_vdw_radius = type__averageR0eff[ n_atom__type[i] ] * 0.1 + type__averageR0eff[ n_atom__type[j] ] * 0.1   # angstrom > nm
+	r_cutoff = 0.92 * r_vdw_radius
+	
+	if r_ij <= r_cutoff:
+		r_ij = r_cutoff
+		
+	I = numpy.eye(3)
+	
+	rij_rij = numpy.dot(vec_r_ij.reshape(-1,1), vec_r_ij.reshape(1,-1))
+	#Tij = ( 3 * vec_r_ij_T * vec_r_ij / r_ij ** 2 - I ) / r_ij ** 3
+	Tij = ( 3  / r_ij ** 2 * rij_rij  - I ) / r_ij ** 3
+	
+	return(Tij)
+
+############################################################
+# get induced dipole of logfile for polarization energy
+############################################################
+
+def get_induced_dipole(n_atom__xyz, pairs__distances, type__averageAlpha0eff, type__averageR0eff, type__charge, CN_factor, type__zero_transfer_distance, type__ChargeTransfer_parameters):
+	
+	for i in range(n_atoms):
+		if class__element[n_atom__class[i]] == 'Zn' or class__element[n_atom__class[i]] == 'Na':
+			ion_index = i
+	
+	n_atom_nohyd = []
+	for i in range(n_atoms):
+		if class__element[n_atom__class[i]] != 'H':
+			n_atom_nohyd.append(i)
+
+	# get alpha list
+	n_atom__alpha0eff = {}
+	for i in n_atom_nohyd:
+		n_atom__alpha0eff[i] = type__averageAlpha0eff[ n_atom__type[i] ]
+	
+	# get Ei0
+	n_atom__E0 = get_Ei0(n_atom__xyz, pairs__distances, type__averageR0eff, type__charge, CN_factor, type__zero_transfer_distance, type__ChargeTransfer_parameters)
+	
+	# initial guess of the induced dipole of cation
+	dipole_Me_initial = numpy.array( [0., 0., 0.] ) 
+	
+	dipole_Me_1 = dipole_Me_initial
+
+	# induced dipole
+	n_atom__dipole ={}
+	dipole_Me_2 = n_atom__alpha0eff[ion_index] *  n_atom__E0[ion_index]
+	for i in n_atom__alpha0eff.keys():
+		if i != ion_index:
+			TiMe = get_Tij(n_atom__xyz, pairs__distances, i, ion_index, type__averageR0eff)
+			TMei = get_Tij(n_atom__xyz, pairs__distances, ion_index, i, type__averageR0eff)
+			
+			n_atom__dipole[i] = n_atom__alpha0eff[i] * n_atom__E0[i] +  n_atom__alpha0eff[i] * numpy.dot(dipole_Me_1 , TiMe)
+			dipole_Me_2 += n_atom__alpha0eff[ion_index] * numpy.dot(n_atom__dipole[i] , TMei)
+			
+	N = 0
+	while numpy.linalg.norm( dipole_Me_2 - dipole_Me_1 ) > 2.0819434e-8:           # 1D = 0.020819434 e*nm   10**(-6) D > e*nm        
+		
+		dipole_Me_1 = dipole_Me_2
+		
+		n_atom__dipole ={}
+		dipole_Me_2 = n_atom__alpha0eff[ion_index] *  n_atom__E0[ion_index]
+		for i in n_atom__alpha0eff.keys():
+			if i != ion_index:
+				TiMe = get_Tij(n_atom__xyz, pairs__distances, i, ion_index, type__averageR0eff)
+				TMei = get_Tij(n_atom__xyz, pairs__distances, ion_index, i, type__averageR0eff)
+				
+				n_atom__dipole[i] = n_atom__alpha0eff[i] *  n_atom__E0[i] + n_atom__alpha0eff[i] * numpy.dot(dipole_Me_1 , TiMe)
+				
+				dipole_Me_2 += n_atom__alpha0eff[ion_index] * numpy.dot(n_atom__dipole[i] , TMei)
+		
+		N += 1
+	
+	n_atom__dipole[ion_index] = dipole_Me_2
+	
+	return(n_atom__dipole, n_atom__E0)
+	
+############################################################
+# get polarization energy of logfile
+############################################################
+		
+def get_polarization_energy(n_atom__xyz, pairs__distances, type__averageAlpha0eff, type__averageR0eff, type__charge, CN_factor, type__zero_transfer_distance, type__ChargeTransfer_parameters):
+	
+	if dict_keywords['fine_tune_polarization_energy'] == True:
+		
+		n_atom__dipole, n_atom__E0 = get_induced_dipole(n_atom__xyz, pairs__distances, type__averageAlpha0eff, type__averageR0eff, type__charge, CN_factor, type__zero_transfer_distance, type__ChargeTransfer_parameters)
+		
+		Epol = 0.
+		for i in n_atom__E0.keys():
+			
+			Epol += -0.5 * float(numpy.dot(n_atom__dipole[i], n_atom__E0[i]))
+			
+			
+		Epol = Epol * 96.485309# eV to kJ/mol
+		
+	elif dict_keywords['fine_tune_polarization_energy'] == False:
+		Epol = 0.
+		
+	return(Epol)
+
+############################################################
+# get polarization energies
+############################################################
+
+def get_polarization_energies(type__averageAlpha0eff, type__charge, CN_factor, type__zero_transfer_distance, type__ChargeTransfer_parameters):
+
+	list_Epol = []
+	
+	type__averageR0eff = get_R0eff()
+	
+	for n_atom__xyz in listofdicts_logfiles___n_atom__xyz:
+		
+		
+		pairs__distances = get_distances(n_atom__xyz)
+		
+		Epol = get_polarization_energy(n_atom__xyz, pairs__distances, type__averageAlpha0eff, type__averageR0eff, type__charge, CN_factor, type__zero_transfer_distance, type__ChargeTransfer_parameters)
+		
+		list_Epol.append( Epol )
+			
+	
+	data['Epol_(FF)'] = list_Epol
+	
+	return()
+
 
 ############################################################
 # print atom type/class overview
@@ -4087,7 +4628,7 @@ def print_charge_transfer_params(CN_factor, \
 	elif dict_keywords['fine_tune_charge_transfer'] == True:
 		print('>>> Charge transfer have been altered in new FF.')
 		printf('  >> Mean absolute error from PSO: %6f\n', float(fopt))
-	if CN_factor != 'No_Charge_transfer':
+	if ( CN_factor != 'No_Charge_transfer' ) and ( CN_factor != 0 ):
 		printf('>> Coordination number factor of cation: %4f\n', float(CN_factor))
 	
 	if (dict_keywords['fine_tune_charge_transfer'] == True) or (dict_keywords['readparamsfromffaffurr'] == True):
@@ -4106,6 +4647,34 @@ def print_charge_transfer_params(CN_factor, \
 	
 	
 	print('\n====\n')
+
+############################################################
+# print polarization energy parameters
+############################################################	
+def print_polarization_params(newFF___type__averageAlpha0eff):
+	
+	print('Polarization parameters:')
+	print('---------------------------')
+	print('                  ')
+	
+	if dict_keywords['fine_tune_polarization_energy'] == False:
+		print('>>> Polarization_energy have not been included in new FF.')
+	elif dict_keywords['fine_tune_polarization_energy'] == True:
+		print('>>> Polarization_energy have been included in new FF.')
+		
+	if dict_keywords['fine_tune_polarization_energy'] == True:
+		print('                  ')
+		print('   Atom type   Param Alpha   Corresponding atoms')
+		print('------------------------------------------------')
+		
+		sortedlist_types = []
+	
+		for atype in newFF___type__averageAlpha0eff.keys():
+			sortedlist_types.append( int(atype) )
+		sortedlist_types = sorted(sortedlist_types)
+		
+		for key in sortedlist_types:
+			printf("   %9d  %8.5f        %2s\n", int(key), newFF___type__averageAlpha0eff[str(key)], class__element[int(type__class[str(key)])] )
 	
 	
 ############################################################
@@ -4304,12 +4873,13 @@ def write_custombondforce_para(newFF___pairs__sigma, \
                                 CN_factor, \
                                 f15, \
                                 type__zero_transfer_distance, \
-		                        type__ChargeTransfer_parameters):
+		                        type__ChargeTransfer_parameters, \
+		                        newFF___type__averageAlpha0eff):
 	
 	# creat root
 	root = ET.Element("CustomForce")
 	
-	# son1 CustomBondForce
+	# son1 CustomBondForce vdw
 	bondforce = ET.SubElement(root, "CustomBondForce")
 	
 	# grandson Bond
@@ -4333,6 +4903,13 @@ def write_custombondforce_para(newFF___pairs__sigma, \
 	for atomType, params in type__ChargeTransfer_parameters.items():
 		chargtran = ET.SubElement(chargetransfer, "Atom", attrib={'type': str(atomType), 'a' : str(params[0]), 'b' : str(params[1]), 'r' : str(type__zero_transfer_distance[atomType])})
 	
+	# son3 polarization energy
+	if dict_keywords['fine_tune_polarization_energy'] == True:
+		polarization = ET.SubElement(root, "CustomPoleForce")
+		
+		# grandson polarizability
+		for atomType, polar in newFF___type__averageAlpha0eff.items():
+			polaParams = ET.SubElement(polarization, "Polarize", attrib={'type': str(atomType), 'polarizability': str(polar)})
 	
 	indent(root)
 	et = ET.ElementTree(root)
