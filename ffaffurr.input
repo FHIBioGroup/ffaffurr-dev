@@ -3,8 +3,8 @@
 #######################################
 
 #Read paramters from ffaffurr-oplsaa.xml.This is used to optimize parameters step by step.
-#readparamsfromffaffurr False
-readparamsfromffaffurr True
+readparamsfromffaffurr False
+#readparamsfromffaffurr True
 
 # bonding terms are of form: 0.5 * kB * (r-r0)**2
 # kB = spring constant parameter
@@ -91,7 +91,7 @@ Regression_imptorsionalV_Method Ridge
 
 # only if fine_tune_imptorsionalV == Regression AND Regression_imptorsionalV_Method == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_imptorsionalV 0.000100
+regularization_parameter_imptorsionalV 30.0
 
 # van der Waals (vdW; Lennard-Jones) terms are of form:
 #       4*epsilon * f * [ (sigma/r)**12 - (sigma/r)**6 ]
@@ -232,8 +232,8 @@ fine_tune_isolated_charges False
 #    -> polarization energy can be included in force field
 #       (use: fine_tune_polarization_energy True)
 #    OR not (use: fine_tune_polarization_energy False)
-#fine_tune_polarization_energy False
-fine_tune_polarization_energy True
+fine_tune_polarization_energy False
+#fine_tune_polarization_energy True
 
 # only if fine_tune_polarization_energy == True:
 # atomic polarizabilities:
