@@ -140,7 +140,7 @@ RegressionEpsilonMethod Lasso
 
 # only if RegressionEpsilonMethod == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_epsilon 30.0
+regularization_parameter_epsilon 0.034342
 
 # only if fine_tune_epsilon == Regression{TS/MBD/Tot} AND RegressionEpsilonMethod == Lasso:
 #   restrict regression-fitted epsilon parameters to be positive

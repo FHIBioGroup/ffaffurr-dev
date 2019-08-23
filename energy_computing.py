@@ -57,6 +57,7 @@ def get_custombondforce_para():
 	type__zero_transfer_distance = {}
 	type__averageAlpha0eff = {}
 	gamma=0.92
+	type__averageR0eff = {}
 	
 	tree = ET.ElementTree(file='CustomForce.xml')
 	if tree.getroot().find('CustomBondForce') is not None:
@@ -85,6 +86,7 @@ def get_custombondforce_para():
 		gamma= float(tree.getroot().find('CustomPoleForce').attrib['gamma'])
 		for atom in tree.getroot().find('CustomPoleForce').findall('Polarize'):
 			type__averageAlpha0eff[ atom.attrib['type'] ] = float( atom.attrib['polarizability'] )
+			type__averageR0eff[ atom.attrib['type'] ] = float( atom.attrib['rvdW'] )
 	
 	return(pairs_14__para, \
 			pairs_15__para, \
@@ -93,7 +95,8 @@ def get_custombondforce_para():
 			type__ChargeTransfer_parameters, \
 			type__zero_transfer_distance, \
 			type__averageAlpha0eff, \
-			gamma)
+			gamma, \
+			type__averageR0eff)
 
 def get_CN(n_atom__xyz, cation_pairs, type__zero_transfer_distance):
 	
@@ -172,18 +175,8 @@ def get_distance(atom1, atom2, n_atom__xyz):
 	distance = distance * 0.1                     # angstrom to nm
 	return(distance)
 
-def get_type__R0eff():
-	
-	type__averageR0eff = {'1085': 1.4149264217692872, '1086': 1.4309764755354706, '1142': 1.9897072370287776, '1148': 1.7819912074967883, '1166': 1.788047448866796, \
-	'1177': 1.784870490384751, '1178': 1.6401096503398347, '1180': 1.6706842147213425, '1183': 1.4185723962507257, '177': 1.7729926635472828, '178': 1.6372212679996812, \
-	'180': 1.6521884358863974, '183': 1.373871522855526, '184': 1.712216281890704, '80': 1.7202490638995236, '834': 1.9503019373349135, '85': 1.3604847567675604}
-
-	return(type__averageR0eff)
-
 # get E0
-def get_E0(n_atom__xyz, n_atom__charge, n_atom_nohyd, ion_index, gamma):
-	
-	type__averageR0eff = get_type__R0eff()
+def get_E0(n_atom__xyz, n_atom__charge, n_atom_nohyd, ion_index, gamma, type__averageR0eff):
 	
 	n_atom__E0 = {}
 	n_atom__E0[ion_index] = 0
@@ -211,9 +204,7 @@ def get_E0(n_atom__xyz, n_atom__charge, n_atom_nohyd, ion_index, gamma):
 	return(n_atom__E0)
 	
 # get Tij
-def get_Tij(n_atom__xyz, i, j, gamma):
-	
-	type__averageR0eff = get_type__R0eff()
+def get_Tij(n_atom__xyz, i, j, gamma, type__averageR0eff):
 	
 	vec_r_ij = numpy.array( n_atom__xyz[ j ] ) * 0.1 - numpy.array( n_atom__xyz[ i ] ) * 0.1         # angstrom > nm
 		
@@ -233,10 +224,10 @@ def get_Tij(n_atom__xyz, i, j, gamma):
 	return(Tij)
 
 # get induced dipole
-def get_induced_dipole(n_atom__xyz, n_atom__alpha0eff, n_atom__charge, n_atom_nohyd, ion_index, gamma):
+def get_induced_dipole(n_atom__xyz, n_atom__alpha0eff, n_atom__charge, n_atom_nohyd, ion_index, gamma, type__averageR0eff):
 	
 	# get E0
-	n_atom_nohyd__E0 = get_E0(n_atom__xyz, n_atom__charge, n_atom_nohyd, ion_index, gamma)
+	n_atom_nohyd__E0 = get_E0(n_atom__xyz, n_atom__charge, n_atom_nohyd, ion_index, gamma, type__averageR0eff)
 	
 	# initial guess of the induced dipole of cation
 	dipole_Me_initial = numpy.array( [0., 0., 0.] ) 
@@ -248,8 +239,8 @@ def get_induced_dipole(n_atom__xyz, n_atom__alpha0eff, n_atom__charge, n_atom_no
 	dipole_Me_2 = n_atom__alpha0eff[ion_index] *  n_atom_nohyd__E0[ion_index]
 	for i in n_atom_nohyd:
 		if i != ion_index:
-			TiMe = get_Tij(n_atom__xyz, i, ion_index, gamma)
-			TMei = get_Tij(n_atom__xyz, ion_index, i, gamma)
+			TiMe = get_Tij(n_atom__xyz, i, ion_index, gamma, type__averageR0eff)
+			TMei = get_Tij(n_atom__xyz, ion_index, i, gamma, type__averageR0eff)
 			n_atom_nohyd__dipole[i] = n_atom__alpha0eff[i] *  n_atom_nohyd__E0[i] + n_atom__alpha0eff[i] * numpy.dot(dipole_Me_1 , TiMe)
 			dipole_Me_2 += n_atom__alpha0eff[ion_index] * numpy.dot(n_atom_nohyd__dipole[i] , TMei)
 			
@@ -262,8 +253,8 @@ def get_induced_dipole(n_atom__xyz, n_atom__alpha0eff, n_atom__charge, n_atom_no
 		dipole_Me_2 = n_atom__alpha0eff[ion_index] *  n_atom_nohyd__E0[ion_index]
 		for i in n_atom_nohyd:
 			if i != ion_index:
-				TiMe = get_Tij(n_atom__xyz, i, ion_index, gamma)
-				TMei = get_Tij(n_atom__xyz, ion_index, i, gamma)
+				TiMe = get_Tij(n_atom__xyz, i, ion_index, gamma, type__averageR0eff)
+				TMei = get_Tij(n_atom__xyz, ion_index, i, gamma, type__averageR0eff)
 				
 				n_atom_nohyd__dipole[i] = n_atom__alpha0eff[i] *  n_atom_nohyd__E0[i] + n_atom__alpha0eff[i] * numpy.dot(dipole_Me_1 , TiMe)
 				dipole_Me_2 += n_atom__alpha0eff[ion_index] * numpy.dot(n_atom_nohyd__dipole[i] , TMei)
@@ -304,7 +295,8 @@ for file in os.listdir(pdb_folder):
 		 type__ChargeTransfer_parameters, \
 		 type__zero_transfer_distance, \
 		 type__averageAlpha0eff, \
-		 gamma                 = get_custombondforce_para()
+		 gamma, \
+		 type__averageR0eff                 = get_custombondforce_para()
 		
 		for pair in pairs_14__para.keys():
 			pairs_vdw.addBond(pair[0], pair[1], [0.5, pairs_14__para[pair][0], pairs_14__para[pair][1]] )
@@ -422,7 +414,7 @@ for file in os.listdir(pdb_folder):
 			n_atom__xyz = get_pdb__info(os.path.join(pdb_folder, file))
 			
 			#get induced dipole
-			n_atom_nohyd__dipole, n_atom_nohyd__E0 = get_induced_dipole(n_atom__xyz, n_atom_nohyd__alpha0eff, n_atom__charge, n_atom_nohyd, ion_index, gamma)
+			n_atom_nohyd__dipole, n_atom_nohyd__E0 = get_induced_dipole(n_atom__xyz, n_atom_nohyd__alpha0eff, n_atom__charge, n_atom_nohyd, ion_index, gamma, type__averageR0eff)
 			
 			for index in n_atom_nohyd:
 				pol_force.addParticle( index, [ n_atom_nohyd__dipole[index][0], n_atom_nohyd__dipole[index][1], n_atom_nohyd__dipole[index][2], n_atom_nohyd__E0[index][0], n_atom_nohyd__E0[index][1], n_atom_nohyd__E0[index][2] ] )
@@ -438,5 +430,3 @@ for file in os.listdir(pdb_folder):
 	savedStdout = sys.stdout
 	sys.stdout = f
 	print(file.split('.')[0], state.getPotentialEnergy()/4.184/kilojoules_per_mole) 
-	#print(file.split('.')[0], state.getForces(asNumpy=True)/4.184)   Force
-
