@@ -10,6 +10,7 @@ import pandas
 import re
 import ast
 import time
+import multiprocessing
 from simtk.openmm.app import *
 from simtk.openmm.app.internal import *
 from simtk.openmm import *
@@ -34,9 +35,9 @@ def printf(format, *args):
 
 def main():
 
-	print("\n==================================================================")
-	print("Framework For Adjusting Force Fields Using Regularized Regression"  )
-	print("==================================================================\n")
+	#print("\n==================================================================")
+	#print("Framework For Adjusting Force Fields Using Regularized Regression"  )
+	#print("==================================================================\n")
 	
 	# read input keywords from input file 'ffaffurr.input'
 	global dict_keywords
@@ -129,11 +130,17 @@ def main():
 	global list_logfiles
 	list_logfiles = get_logfiles()
 	
-	# get xyz for all logfiles
+	# get information for all logfiles
 	global listofdicts_logfiles___n_atom__xyz
 	global index__listofdicts_logfiles___n_atom__xyz
+	global logfile__n_atom__free_atom_volume
+	global logfile__n_atom__hirshfeld_volume
+	global logfile__n_atom__charges
 	listofdicts_logfiles___n_atom__xyz, \
-	 index__listofdicts_logfiles___n_atom__xyz= get_logfiles_xyz()
+	 index__listofdicts_logfiles___n_atom__xyz, \
+	 logfile__n_atom__free_atom_volume, \
+	 logfile__n_atom__hirshfeld_volume, \
+	 logfile__n_atom__charges = get_logfiles_info()
 	
 	# polarizibility from FHI-aims
 	#origFF___type__averageAlpha0eff, origFF___n_atom__alpha0eff = get_alpha0eff()
@@ -159,13 +166,12 @@ def main():
 	elif dict_keywords['fine_tune_charge_transfer'] == True:
 		newFF___type__charge = get_type__isolated_charge(origFF___type__charge)
 	
-	
 	# get pair-wise charge parameters (new FF) for Coulomb interactions, No charge transfer
 	newFF___pairs__charge = get_charge_pairs_params(newFF___type__charge)
 	
-	# get newFF___type__averageAlpha0eff
+	# include polarization_energy (or not)
+	# get newFF___type__averageAlpha0eff (no tune)
 	if dict_keywords['fine_tune_polarization_energy'] == True:
-		type__averageR0eff = get_R0eff()
 		if dict_keywords['fine_tune_polarizabilities'] == False:
 			if origFF___type__averageAlpha0eff:
 				newFF___type__averageAlpha0eff = copy.deepcopy(origFF___type__averageAlpha0eff)
@@ -174,36 +180,15 @@ def main():
 				newFF___type__averageAlpha0eff = get_alpha0eff()
 				newFF___gamma = 0.92
 	elif dict_keywords['fine_tune_polarization_energy'] == False:
-		type__averageR0eff = {}
 		newFF___type__averageAlpha0eff = {}
 		newFF___gamma = 0.92
 	
-	# fine-tune charge transfer (or not)
+	# fine-tune charge transfer (not)
 	if dict_keywords['fine_tune_charge_transfer'] == False:
 		newFF___CN_factor = copy.deepcopy(origFF___CN_factor)
 		newFF___type__zero_transfer_distance = copy.deepcopy(origFF___type__zero_transfer_distance)
 		newFF___type__ChargeTransfer_parameters = copy.deepcopy(origFF___type__ChargeTransfer_parameters)
 		fopt = []
-	elif dict_keywords['fine_tune_charge_transfer'] == True:
-		newFF___CN_factor, \
-		 newFF___type__zero_transfer_distance, \
-		 newFF___type__ChargeTransfer_parameters, \
-		 fopt = PSO_optimize(origFF___classpair__Kb, \
-							   newFF___classpair__r0, \
-							   origFF___classtriple__Ktheta, \
-							   newFF___classtriple__theta0, \
-							   origFF___classquadruple__V1, \
-							   origFF___classquadruple__V2, \
-							   origFF___classquadruple__V3, \
-							   origFF___classquadruple__V4, \
-							   origFF___classquadruple__impV2, \
-							   origFF___pairs__sigma, \
-							   origFF___pairs__epsilon, \
-							   newFF___pairs__charge, \
-							   newFF___type__charge, \
-							   newFF___type__averageAlpha0eff, \
-							   newFF___gamma, \
-							   type__averageR0eff)
 	
 	# fine-tune sigma parameters for (type)pairs from TS using R0eff (or not)
 	if dict_keywords['fine_tune_sigma'] == 'False':
@@ -234,185 +219,8 @@ def main():
 			newFF___typepairs__epsilon = set_some_dict_entries_zero(origFF___typepairs__epsilon, \
 																	  newFF___typepairs__epsilon)
 	
-	# include polarization energy (or not)
-	# tune polarizabilities (or not)												  
-	if dict_keywords['fine_tune_polarization_energy'] == True:
-		if dict_keywords['fine_tune_polarizabilities'] == True:
-			newFF___type__averageAlpha0eff, newFF___gamma, fopt_pol = get_polarizabilities_PSO(origFF___classpair__Kb, \
-																		newFF___classpair__r0, \
-																		origFF___classtriple__Ktheta, \
-																		newFF___classtriple__theta0, \
-																		origFF___classquadruple__V1, \
-																		origFF___classquadruple__V2, \
-																		origFF___classquadruple__V3, \
-																		origFF___classquadruple__V4, \
-																		origFF___classquadruple__impV2, \
-																		origFF___pairs__sigma, \
-																		origFF___pairs__epsilon, \
-																		newFF___pairs__charge, \
-																		newFF___type__charge, \
-																		newFF___CN_factor, \
-																		newFF___type__zero_transfer_distance, \
-																		newFF___type__ChargeTransfer_parameters, \
-																		type__averageR0eff)
-	
-													  
-	########################################################################################
-	# now we start to collect (and/or calculate) all kinds of energies (total energies,    #
-	#   force field energy terms, energy contributions, etc.) for all FHI-aims logfiles    #
-	#   and store them into one big DataFrame (named 'data') that we can then access       #
-	#   easily when wanting to apply Linear or Ridge or Lasso regression                   #
-	########################################################################################
-	
-	global data
-	data = pandas.DataFrame()
-	
-	# get total energies from high-level (DFT; FHI-aims) calculations output
-	# also: get vdW(TS) or MBD energies if requested
-	get_fhiaims_energies()
-	
-	# get bonding energies with newFF parameters
-	# bonding terms are of form: 0.5 * kB * (r-r0)**2
-	get_bonding_energies(origFF___classpair__Kb, newFF___classpair__r0)
-	
-	# get angles energies with newFF parameters
-	# angles bending terms are of form: 0.5 * Ktheta * (theta-theta0)**2
-	get_angles_energies(origFF___classtriple__Ktheta, newFF___classtriple__theta0)
-	
-	# get torsions energies with origFF parameters
-	#   (not really useful at the moment but I put it in just for completeness
-	#    and in case I need this function in the future for some reason)
-	# -> torsion (dihedral angles) terms are of form:
-	#       V1  * ( 1+cos(  phi − θ0) )
-	#       V2  * ( 1+cos(2*phi − θ0) )
-	#       V3  * ( 1+cos(3*phi − θ0) )
-	# θ0 is the phase offset, and k is the force constant
-	get_torsions_energies(origFF___classquadruple__V1, origFF___classquadruple__V2, origFF___classquadruple__V3, origFF___classquadruple__V4, 'Etorsions_(origFF)')
-	
-	# get improper torsions energies with origFF parameters
-	# -> improper torsion terms are of form:
-	#       impv2 * (1 + cos (2θ − θ0 ))
-	get_improper_energies(origFF___classquadruple__impV2)
-	
-	# get polarization energies with alpha from FHI-aims
-	# -> polarization terms are of form:
-	#       -0.5 * dipole * E0
-	get_polarization_energies(newFF___type__averageAlpha0eff, type__averageR0eff, newFF___type__charge, newFF___gamma, newFF___CN_factor, newFF___type__zero_transfer_distance, newFF___type__ChargeTransfer_parameters)
-	
-	# get Coulomb energies with newFF parameters
-	# -> Coulomb terms are of form: f * q1*q2 / r12
-	#          {   0 for 1-2-interactions and 1-3-interactions
-	#       f ={ 0.5 for 1-4-interactions
-	#          {   1 for 1-5-interactions and higher
-	get_Coulomb_energies(newFF___pairs__charge, newFF___type__charge, newFF___CN_factor, newFF___type__zero_transfer_distance, newFF___type__ChargeTransfer_parameters)
-	
-	# get Coulomb energy contributions per 1-X-interaction with newFF parameters
-	# -> terms are of form: q1*q2 / r12
-	get_Coulomb_energyContribsPer_1_X_interaction(newFF___pairs__charge, newFF___type__charge, newFF___CN_factor, newFF___type__zero_transfer_distance, newFF___type__ChargeTransfer_parameters)
-	
-	# get vdW energies with origFF parameters
-	# -> van der Waals (vdW; Lennard-Jones) terms are of form:
-	#       4*epsilon * f * [ (sigma/r)**12 - (sigma/r)**6 ]
-	#            {   0 for 1-2-interactions and 1-3-interactions
-	#         f ={ 1/2 for 1-4-interactions
-	#            {   1 for 1-5-interactions and higher
-	get_vdW_energies(origFF___pairs__sigma, origFF___pairs__epsilon, 'Evdw_(origFF)')
-	
-	# do regression for estimating fudge factors in Coulomb energies
-	f14 = 0.5 # default
-	f15 = 1.0 # default
-	if ( dict_keywords['fine_tune_Coulomb_fudge_factors'] == True ):
-		f14, f15 = do_regression_Coulomb_fudge_factors() 
-		# reset Coulomb energies with new fudge factors
-		data['Ecoul_(FF)'] =  (   f14 * data['Ecoul_(FF)_14Intacts'] \
-								+ f15 * data['Ecoul_(FF)_15plusIntacts'] )
-	
-	#    with pandas.option_context('display.max_rows', 999, 'display.max_columns', 999):
-	#        print(data.head())
-	#        print(data)
-    
-	# get bonding energy contributions classpair-wise
-	#   (not really useful at the moment but I put it in just for completeness
-	#    and in case I need this function in the future for some reason)
-	# -> bonding contributions are of form: 0.5 * (r-r0)**2
-#    get_bondEnergyContribs(newFF___classpair__r0)
-    
-	# get angles energy contributions classtriple-wise
-	#   (not really useful at the moment but I put it in just for completeness
-	#    and in case I need this function in the future for some reason)
-	# -> angles bending contributions are of form: (theta-theta0)**2
-#    get_anglesEnergyContribs(newFF___classtriple__theta0)
-    
-    
-	# get improper torsions energy contributions classquadruple-wise
-	#   (not really useful at the moment but I put it in just for completeness
-	#    and in case I need this function in the future for some reason)
-	# -> improper torsion contributions are of form:
-	#       ( 1+cos(2*phi − θ0) )
-	if dict_keywords['fine_tune_imptorsionalV'] == True:
-	    get_impropsEnergyContribs()
-	
-	# get torsions energy contributions classquadruple-wise
-	# torsion (dihedral angles) contributions are of form:
-	#       V1  * ( 1+cos(  phi − θ0) )
-	#       V2  * ( 1+cos(2*phi − θ0) )
-	#       V3  * ( 1+cos(3*phi − θ0) )
-	# θ0 is the phase offset, and k is the force constant
-	if dict_keywords['fine_tune_torsionalV'] == True:
-		get_torsionsEnergyContribs(origFF___classquadruple__V1, origFF___classquadruple__V2, origFF___classquadruple__V3)
-		
-	# get vdW energy contributions typepair-wise
-	# -> van der Waals (vdW; Lennard-Jones) contributions are of form:
-	#       4 * f * [ (sigma/r)**12 - (sigma/r)**6 ]
-	#            {   0 for 1-2-interactions and 1-3-interactions
-	#         f ={ 1/2 for 1-4-interactions
-	#            {   1 for 1-5-interactions and higher
-	get_vdWenergyContribs(newFF___pairs__sigma)
-	
-	# do regression for vdW (either TS or MBD or total energy) to estimate epsilon parameters
-	if ( dict_keywords['fine_tune_epsilon'] == 'RegressionMBD' ) or ( dict_keywords['fine_tune_epsilon'] == 'RegressionTS' ):
-		newFF___pairs__epsilon, \
-		newFF___typepairs__epsilon = do_regression_epsilon_vdW() 
-	elif ( dict_keywords['fine_tune_epsilon'] == 'RegressionTot' ):
-		newFF___pairs__epsilon, \
-		newFF___typepairs__epsilon = do_regression_epsilon_Tot(origFF___typepairs__epsilon) 
-	
-	# get vdW energies with newFF parameters
-	# -> van der Waals (vdW; Lennard-Jones) terms are of form:
-	#       4*epsilon * f * [ (sigma/r)**12 - (sigma/r)**6 ]
-	#            {   0 for 1-2-interactions and 1-3-interactions
-	#         f ={ 1/2 for 1-4-interactions
-	#            {   1 for 1-5-interactions and higher
-	get_vdW_energies(newFF___pairs__sigma, newFF___pairs__epsilon, 'Evdw_(FF)')
-	
-	# do regression to estimate torsional parameters (V1, V2, V3)
-	if dict_keywords['fine_tune_torsionalV'] == True:
-		newFF___classquadruple__V1, \
-		 newFF___classquadruple__V2, \
-		 newFF___classquadruple__V3 = do_regression_torsionalV(origFF___classquadruple__V1,origFF___classquadruple__V2, origFF___classquadruple__V3) 
-		newFF___classquadruple__V4 = {}
-	elif dict_keywords['fine_tune_torsionalV'] == False:
-		newFF___classquadruple__V1 = copy.deepcopy(origFF___classquadruple__V1)
-		newFF___classquadruple__V2 = copy.deepcopy(origFF___classquadruple__V2)
-		newFF___classquadruple__V3 = copy.deepcopy(origFF___classquadruple__V3)
-		newFF___classquadruple__V4 = copy.deepcopy(origFF___classquadruple__V4)
-		
-	# get torsions energies with newFF parameters
-	#   (not really useful at the moment but I put it in just for completeness
-	#    and in case I need this function in the future for some reason)
-	# -> torsion (dihedral angles) terms are of form:
-	#       V1  * ( 1+cos(  phi − θ0) )
-	#       V2  * ( 1+cos(2*phi − θ0) )
-	#       V3  * ( 1+cos(3*phi − θ0) )
-	# θ0 is the phase offset, and k is the force constant
-	get_torsions_energies(newFF___classquadruple__V1, newFF___classquadruple__V2, newFF___classquadruple__V3, newFF___classquadruple__V4, 'Etorsions_(FF)')	
-		
-    
-	# do regression to estimate improper torsional parameters (impV2)
-	if dict_keywords['fine_tune_imptorsionalV'] == True:
-		newFF___collect_classquadruple__impV2, \
-		  newFF___classquadruple__impV2 = do_regression_imptorsionalV(origFF___classquadruple__impV2) 
-	elif dict_keywords['fine_tune_imptorsionalV'] == False:
+	# not-tune imptorsionalV
+	if dict_keywords['fine_tune_imptorsionalV'] == False:
 		newFF___collect_classquadruple__impV2 = {}
 		newFF___classquadruple__impV2 = copy.deepcopy(origFF___classquadruple__impV2)
 		for atuple in newFF___classquadruple__impV2:
@@ -421,107 +229,354 @@ def main():
 			elif atuple[2] == 24 or atuple[2] == 47 or atuple[2] == 48:
 				newFF___collect_classquadruple__impV2[ (0, 0, atuple[2], 0) ] = newFF___classquadruple__impV2[ atuple ]
 	
-	#print(newFF___classquadruple__impV2)
-	#energy_list = get_FF_energy(origFF___classpair__Kb, \
-	#				newFF___classpair__r0, \
-	#				origFF___classtriple__Ktheta, \
-	#				newFF___classtriple__theta0, \
-	#				newFF___classquadruple__V1, \
-	#				newFF___classquadruple__V2, \
-	#				newFF___classquadruple__V3, \
-	#				newFF___classquadruple__V4, \
-	#				newFF___classquadruple__impV2, \
-	#				newFF___pairs__sigma, \
-	#				newFF___pairs__epsilon, \
-	#				newFF___pairs__charge, \
-	#				newFF___type__charge, \
-	#				newFF___CN_factor, \
-	#				newFF___type__zero_transfer_distance, \
-	#				newFF___type__ChargeTransfer_parameters, \
-	#				newFF___type__averageAlpha0eff, \
-	#				newFF___gamma, \
-	#				type__averageR0eff)
-	#print(energy_list)
-	############################################################
-	# print all kinds of information
-	############################################################
-	
-	# print atom type/class overview
-	print_atom_type_class_overview()
-    
-	# print original and new r0 parameters classpair-wise, and kB parameters (unaltered))
-	print_r0_kB_params(origFF___classpair__r0, newFF___classpair__r0, origFF___classpair__Kb)
-	
-	# print original and new theta0 parameters classtriple-wise, and Ktheta parameters (unaltered)
-	print_theta0_params(origFF___classtriple__theta0, newFF___classtriple__theta0, origFF___classtriple__Ktheta)
-	
-	# print torsions parameters (V1, V2, V3)
-	print_torsions_params(origFF___classquadruple__V1, \
-						   origFF___classquadruple__V2, \
-						   origFF___classquadruple__V3, \
-						   newFF___classquadruple__V1, \
-						   newFF___classquadruple__V2, \
-						   newFF___classquadruple__V3)
-	
-	# print improper torsions parameters (unaltered)
-	print_improps_params(origFF___classquadruple__impV2, \
-						   newFF___classquadruple__impV2)
-	
-	# print original and new sigma parameters typepair-wise
-	print_sigma_params(origFF___typepairs__sigma, newFF___typepairs__sigma)
-	
-	# print original and new epsilon parameters typepair-wise
-	print_epsilon_params(origFF___typepairs__epsilon, newFF___typepairs__epsilon)
-	
-	# print original and new charge parameters type-wise
-	print_charge_params(origFF___type__charge, newFF___type__charge)
-	
-	# print original and new fudge factors
-	print_fudge_factors(f14, f15)
-	
-	# print charge transfer parameters
-	print_charge_transfer_params(newFF___CN_factor, newFF___type__zero_transfer_distance, newFF___type__ChargeTransfer_parameters, fopt)
-	
-	# print polarization parameters
-	print_polarization_params(origFF___type__averageAlpha0eff, newFF___type__averageAlpha0eff, newFF___gamma, type__averageR0eff)
-	
-	# write OpenMM force field parameter file
-	write_OpenMM_ff_params_file(newFF___classpair__r0, \
-								 origFF___classpair__Kb, \
-								 newFF___classtriple__theta0, \
-								 origFF___classtriple__Ktheta, \
-								 newFF___classquadruple__V1, \
-								 newFF___classquadruple__V2, \
-								 newFF___classquadruple__V3, \
-								 newFF___classquadruple__V4, \
-								 newFF___collect_classquadruple__impV2, \
-								 newFF___classquadruple__impV2, \
-								 newFF___typepairs__sigma, \
-								 newFF___typepairs__epsilon, \
-								 newFF___type__charge, \
-								 f14, f15)
-    
-	# write Custombond force parameter file
-	write_custombondforce_para(newFF___pairs__sigma, \
-								newFF___pairs__epsilon, \
-								newFF___CN_factor, \
-								f15, \
-                               newFF___type__zero_transfer_distance, \
-		                        newFF___type__ChargeTransfer_parameters, \
-	                            newFF___type__averageAlpha0eff, \
-	                            newFF___gamma, \
-	                            type__averageR0eff)
-								
-	
-	#for atupe in list_imp1234_interacts:
-	#	print(atupe)
-	#	print(n_atom__class[atupe[0]],n_atom__class[atupe[1]], n_atom__class[atupe[2]],n_atom__class[atupe[3]])
-	#print(newFF___classquadruple__impV2)
-    
-	print("========")
-	print("Goodbye!"  )
-	print("========\n")
+	#default fudge factor of Coulomb interaction
+	f14 = 0.5 # default
+	f15 = 1.0 # default
 
+	# fine-tune charge_transfer or polarizabilities with pso
+	if ( dict_keywords['fine_tune_charge_transfer'] == True ) or ( dict_keywords['fine_tune_polarizabilities'] == True):
+		index__Energies_DFT = get_index__fhiaims_energies()
+		
+		if dict_keywords['fine_tune_charge_transfer'] == True:
+			looping_number = dict_keywords['number_of_pso_CT']
+		elif dict_keywords['fine_tune_polarizabilities'] == True:
+			looping_number = dict_keywords['number_of_pso_POL']
+			
+		for i in range(looping_number):
+			# fine-tune charge_transfer
+			if dict_keywords['fine_tune_charge_transfer'] == True:
+				processes_num = dict_keywords['number_of_processes_CT']
+				newFF___CN_factor, \
+				newFF___type__zero_transfer_distance, \
+				newFF___type__ChargeTransfer_parameters, \
+				fopt = PSO_optimize(origFF___classpair__Kb, \
+									newFF___classpair__r0, \
+									origFF___classtriple__Ktheta, \
+									newFF___classtriple__theta0, \
+									origFF___classquadruple__V1, \
+									origFF___classquadruple__V2, \
+									origFF___classquadruple__V3, \
+									origFF___classquadruple__V4, \
+									origFF___classquadruple__impV2, \
+									origFF___pairs__sigma, \
+									origFF___pairs__epsilon, \
+									newFF___pairs__charge, \
+									newFF___type__charge, \
+									newFF___type__averageAlpha0eff, \
+									newFF___gamma, \
+									index__Energies_DFT, \
+									processes_num)
+
+			# fine-tune polarizabilities												  
+			elif dict_keywords['fine_tune_polarizabilities'] == True:
+				processes_num = dict_keywords['number_of_processes_POL']
+				newFF___type__averageAlpha0eff, newFF___gamma, fopt_pol = get_polarizabilities_PSO(origFF___classpair__Kb, \
+																			newFF___classpair__r0, \
+																			origFF___classtriple__Ktheta, \
+																			newFF___classtriple__theta0, \
+																			origFF___classquadruple__V1, \
+																			origFF___classquadruple__V2, \
+																			origFF___classquadruple__V3, \
+																			origFF___classquadruple__V4, \
+																			origFF___classquadruple__impV2, \
+																			origFF___pairs__sigma, \
+																			origFF___pairs__epsilon, \
+																			newFF___pairs__charge, \
+																			newFF___type__charge, \
+																			newFF___CN_factor, \
+																			newFF___type__zero_transfer_distance, \
+																			newFF___type__ChargeTransfer_parameters, \
+																			index__Energies_DFT, \
+																			processes_num)
+																			
+			
+			# write OpenMM force field parameter file
+			file_name_1 = 'ffaffurr-oplsaa.' +str(i) + '.xml'
+			write_OpenMM_ff_params_file(file_name_1, \
+										newFF___classpair__r0, \
+										origFF___classpair__Kb, \
+										newFF___classtriple__theta0, \
+										origFF___classtriple__Ktheta, \
+										origFF___classquadruple__V1, \
+										origFF___classquadruple__V2, \
+										origFF___classquadruple__V3, \
+										origFF___classquadruple__V4, \
+										newFF___collect_classquadruple__impV2, \
+										newFF___classquadruple__impV2, \
+										newFF___typepairs__sigma, \
+										newFF___typepairs__epsilon, \
+										newFF___type__charge, \
+										f14, f15)
+			
+			file_name_2 = 'CustomForce.' +str(i) + '.xml'
+			# write Custombond force parameter file
+			write_custombondforce_para(file_name_2, \
+										newFF___pairs__sigma, \
+										newFF___pairs__epsilon, \
+										newFF___CN_factor, \
+										f15, \
+										newFF___type__zero_transfer_distance, \
+										newFF___type__ChargeTransfer_parameters, \
+										newFF___type__averageAlpha0eff, \
+										newFF___gamma)
+			
+			print("========")
+			print("Goodbye!"  )
+			print("========\n")
+	else:
+													  
+		########################################################################################
+		# now we start to collect (and/or calculate) all kinds of energies (total energies,    #
+		#   force field energy terms, energy contributions, etc.) for all FHI-aims logfiles    #
+		#   and store them into one big DataFrame (named 'data') that we can then access       #
+		#   easily when wanting to apply Linear or Ridge or Lasso regression                   #
+		########################################################################################
+	
+		global data
+		data = pandas.DataFrame()
+		
+		# get total energies from high-level (DFT; FHI-aims) calculations output
+		# also: get vdW(TS) or MBD energies if requested
+		get_fhiaims_energies()
+		
+		# get bonding energies with newFF parameters
+		# bonding terms are of form: 0.5 * kB * (r-r0)**2
+		get_bonding_energies(origFF___classpair__Kb, newFF___classpair__r0)
+		
+		# get angles energies with newFF parameters
+		# angles bending terms are of form: 0.5 * Ktheta * (theta-theta0)**2
+		get_angles_energies(origFF___classtriple__Ktheta, newFF___classtriple__theta0)
+		
+		# get torsions energies with origFF parameters
+		#   (not really useful at the moment but I put it in just for completeness
+		#    and in case I need this function in the future for some reason)
+		# -> torsion (dihedral angles) terms are of form:
+		#       V1  * ( 1+cos(  phi − θ0) )
+		#       V2  * ( 1+cos(2*phi − θ0) )
+		#       V3  * ( 1+cos(3*phi − θ0) )
+		# θ0 is the phase offset, and k is the force constant
+		get_torsions_energies(origFF___classquadruple__V1, origFF___classquadruple__V2, origFF___classquadruple__V3, origFF___classquadruple__V4, 'Etorsions_(origFF)')
+		
+		# get improper torsions energies with origFF parameters
+		# -> improper torsion terms are of form:
+		#       impv2 * (1 + cos (2θ − θ0 ))
+		get_improper_energies(origFF___classquadruple__impV2)
+		
+		# get polarization energies with alpha from FHI-aims
+		# -> polarization terms are of form:
+		#       -0.5 * dipole * E0
+		get_polarization_energies(newFF___type__averageAlpha0eff, newFF___type__charge, newFF___gamma, newFF___CN_factor, newFF___type__zero_transfer_distance, newFF___type__ChargeTransfer_parameters)
+		
+		# get Coulomb energies with newFF parameters
+		# -> Coulomb terms are of form: f * q1*q2 / r12
+		#          {   0 for 1-2-interactions and 1-3-interactions
+		#       f ={ 0.5 for 1-4-interactions
+		#          {   1 for 1-5-interactions and higher
+		get_Coulomb_energies(newFF___pairs__charge, newFF___type__charge, newFF___CN_factor, newFF___type__zero_transfer_distance, newFF___type__ChargeTransfer_parameters)
+		
+		# get Coulomb energy contributions per 1-X-interaction with newFF parameters
+		# -> terms are of form: q1*q2 / r12
+		get_Coulomb_energyContribsPer_1_X_interaction(newFF___pairs__charge, newFF___type__charge, newFF___CN_factor, newFF___type__zero_transfer_distance, newFF___type__ChargeTransfer_parameters)
+		
+		# get vdW energies with origFF parameters
+		# -> van der Waals (vdW; Lennard-Jones) terms are of form:
+		#       4*epsilon * f * [ (sigma/r)**12 - (sigma/r)**6 ]
+		#            {   0 for 1-2-interactions and 1-3-interactions
+		#         f ={ 1/2 for 1-4-interactions
+		#            {   1 for 1-5-interactions and higher
+		get_vdW_energies(origFF___pairs__sigma, origFF___pairs__epsilon, 'Evdw_(origFF)')
+		
+		# do regression for estimating fudge factors in Coulomb energies
+		if ( dict_keywords['fine_tune_Coulomb_fudge_factors'] == True ):
+			f14, f15 = do_regression_Coulomb_fudge_factors() 
+			# reset Coulomb energies with new fudge factors
+			data['Ecoul_(FF)'] =  (   f14 * data['Ecoul_(FF)_14Intacts'] \
+									+ f15 * data['Ecoul_(FF)_15plusIntacts'] )
+		
+		#    with pandas.option_context('display.max_rows', 999, 'display.max_columns', 999):
+		#        print(data.head())
+		#        print(data)
+		
+		# get bonding energy contributions classpair-wise
+		#   (not really useful at the moment but I put it in just for completeness
+		#    and in case I need this function in the future for some reason)
+		# -> bonding contributions are of form: 0.5 * (r-r0)**2
+#   	 get_bondEnergyContribs(newFF___classpair__r0)
+		
+		# get angles energy contributions classtriple-wise
+		#   (not really useful at the moment but I put it in just for completeness
+		#    and in case I need this function in the future for some reason)
+		# -> angles bending contributions are of form: (theta-theta0)**2
+#   	 get_anglesEnergyContribs(newFF___classtriple__theta0)
+		
+		
+		# get improper torsions energy contributions classquadruple-wise
+		#   (not really useful at the moment but I put it in just for completeness
+		#    and in case I need this function in the future for some reason)
+		# -> improper torsion contributions are of form:
+		#       ( 1+cos(2*phi − θ0) )
+		if dict_keywords['fine_tune_imptorsionalV'] == True:
+			get_impropsEnergyContribs()
+		
+		# get torsions energy contributions classquadruple-wise
+		# torsion (dihedral angles) contributions are of form:
+		#       V1  * ( 1+cos(  phi − θ0) )
+		#       V2  * ( 1+cos(2*phi − θ0) )
+		#       V3  * ( 1+cos(3*phi − θ0) )
+		# θ0 is the phase offset, and k is the force constant
+		if dict_keywords['fine_tune_torsionalV'] == True:
+			get_torsionsEnergyContribs(origFF___classquadruple__V1, origFF___classquadruple__V2, origFF___classquadruple__V3)
+			
+		# get vdW energy contributions typepair-wise
+		# -> van der Waals (vdW; Lennard-Jones) contributions are of form:
+		#       4 * f * [ (sigma/r)**12 - (sigma/r)**6 ]
+		#            {   0 for 1-2-interactions and 1-3-interactions
+		#         f ={ 1/2 for 1-4-interactions
+		#            {   1 for 1-5-interactions and higher
+		get_vdWenergyContribs(newFF___pairs__sigma)
+		
+		# do regression for vdW (either TS or MBD or total energy) to estimate epsilon parameters
+		if ( dict_keywords['fine_tune_epsilon'] == 'RegressionMBD' ) or ( dict_keywords['fine_tune_epsilon'] == 'RegressionTS' ):
+			newFF___pairs__epsilon, \
+			newFF___typepairs__epsilon = do_regression_epsilon_vdW() 
+		elif ( dict_keywords['fine_tune_epsilon'] == 'RegressionTot' ):
+			newFF___pairs__epsilon, \
+			newFF___typepairs__epsilon = do_regression_epsilon_Tot(origFF___typepairs__epsilon) 
+		
+		# get vdW energies with newFF parameters
+		# -> van der Waals (vdW; Lennard-Jones) terms are of form:
+		#       4*epsilon * f * [ (sigma/r)**12 - (sigma/r)**6 ]
+		#            {   0 for 1-2-interactions and 1-3-interactions
+		#         f ={ 1/2 for 1-4-interactions
+		#            {   1 for 1-5-interactions and higher
+		get_vdW_energies(newFF___pairs__sigma, newFF___pairs__epsilon, 'Evdw_(FF)')
+		
+		# do regression to estimate torsional parameters (V1, V2, V3)
+		if dict_keywords['fine_tune_torsionalV'] == True:
+			newFF___classquadruple__V1, \
+			newFF___classquadruple__V2, \
+			newFF___classquadruple__V3 = do_regression_torsionalV(origFF___classquadruple__V1,origFF___classquadruple__V2, origFF___classquadruple__V3) 
+			newFF___classquadruple__V4 = {}
+		elif dict_keywords['fine_tune_torsionalV'] == False:
+			newFF___classquadruple__V1 = copy.deepcopy(origFF___classquadruple__V1)
+			newFF___classquadruple__V2 = copy.deepcopy(origFF___classquadruple__V2)
+			newFF___classquadruple__V3 = copy.deepcopy(origFF___classquadruple__V3)
+			newFF___classquadruple__V4 = copy.deepcopy(origFF___classquadruple__V4)
+			
+		# get torsions energies with newFF parameters
+		#   (not really useful at the moment but I put it in just for completeness
+		#    and in case I need this function in the future for some reason)
+		# -> torsion (dihedral angles) terms are of form:
+		#       V1  * ( 1+cos(  phi − θ0) )
+		#       V2  * ( 1+cos(2*phi − θ0) )
+		#       V3  * ( 1+cos(3*phi − θ0) )
+		# θ0 is the phase offset, and k is the force constant
+		get_torsions_energies(newFF___classquadruple__V1, newFF___classquadruple__V2, newFF___classquadruple__V3, newFF___classquadruple__V4, 'Etorsions_(FF)')	
+			
+		
+		# do regression to estimate improper torsional parameters (impV2)
+		if dict_keywords['fine_tune_imptorsionalV'] == True:
+			newFF___collect_classquadruple__impV2, \
+			newFF___classquadruple__impV2 = do_regression_imptorsionalV(origFF___classquadruple__impV2) 
+		
+		#energy_list = get_FF_energy(origFF___classpair__Kb, \
+		#				newFF___classpair__r0, \
+		#				origFF___classtriple__Ktheta, \
+		#				newFF___classtriple__theta0, \
+		#				newFF___classquadruple__V1, \
+		#				newFF___classquadruple__V2, \
+		#				newFF___classquadruple__V3, \
+		#				newFF___classquadruple__V4, \
+		#				newFF___classquadruple__impV2, \
+		#				newFF___pairs__sigma, \
+		#				newFF___pairs__epsilon, \
+		#				newFF___pairs__charge, \
+		#				newFF___type__charge, \
+		#				newFF___CN_factor, \
+		#				newFF___type__zero_transfer_distance, \
+		#				newFF___type__ChargeTransfer_parameters, \
+		#				newFF___type__averageAlpha0eff, \
+		#				newFF___gamma)
+		#print(energy_list)
+		############################################################
+		# print all kinds of information
+		############################################################
+		# print atom type/class overview
+		print_atom_type_class_overview()
+		
+		# print original and new r0 parameters classpair-wise, and kB parameters (unaltered))
+		print_r0_kB_params(origFF___classpair__r0, newFF___classpair__r0, origFF___classpair__Kb)
+		
+		# print original and new theta0 parameters classtriple-wise, and Ktheta parameters (unaltered)
+		print_theta0_params(origFF___classtriple__theta0, newFF___classtriple__theta0, origFF___classtriple__Ktheta)
+		
+		# print torsions parameters (V1, V2, V3)
+		print_torsions_params(origFF___classquadruple__V1, \
+							origFF___classquadruple__V2, \
+							origFF___classquadruple__V3, \
+							newFF___classquadruple__V1, \
+							newFF___classquadruple__V2, \
+							newFF___classquadruple__V3)
+		
+		# print improper torsions parameters (unaltered)
+		print_improps_params(origFF___classquadruple__impV2, \
+							newFF___classquadruple__impV2)
+		
+		# print original and new sigma parameters typepair-wise
+		print_sigma_params(origFF___typepairs__sigma, newFF___typepairs__sigma)
+		
+		# print original and new epsilon parameters typepair-wise
+		print_epsilon_params(origFF___typepairs__epsilon, newFF___typepairs__epsilon)
+		
+		# print original and new charge parameters type-wise
+		print_charge_params(origFF___type__charge, newFF___type__charge)
+		
+		# print original and new fudge factors
+		print_fudge_factors(f14, f15)
+		
+		# print charge transfer parameters
+		print_charge_transfer_params(newFF___CN_factor, newFF___type__zero_transfer_distance, newFF___type__ChargeTransfer_parameters, fopt)
+		
+		# print polarization parameters
+		print_polarization_params(newFF___type__averageAlpha0eff, newFF___gamma)
+		
+		# write OpenMM force field parameter file
+		write_OpenMM_ff_params_file('ffaffurr-oplsaa.xml', \
+									newFF___classpair__r0, \
+									origFF___classpair__Kb, \
+									newFF___classtriple__theta0, \
+									origFF___classtriple__Ktheta, \
+									newFF___classquadruple__V1, \
+									newFF___classquadruple__V2, \
+									newFF___classquadruple__V3, \
+									newFF___classquadruple__V4, \
+									newFF___collect_classquadruple__impV2, \
+									newFF___classquadruple__impV2, \
+									newFF___typepairs__sigma, \
+									newFF___typepairs__epsilon, \
+									newFF___type__charge, \
+									f14, f15)
+		
+		# write Custombond force parameter file
+		write_custombondforce_para('CustomForce.xml', \
+									newFF___pairs__sigma, \
+									newFF___pairs__epsilon, \
+									newFF___CN_factor, \
+									f15, \
+								newFF___type__zero_transfer_distance, \
+									newFF___type__ChargeTransfer_parameters, \
+									newFF___type__averageAlpha0eff, \
+									newFF___gamma)
+									
+		
+		#for atupe in list_imp1234_interacts:
+		#	print(atupe)
+		#	print(n_atom__class[atupe[0]],n_atom__class[atupe[1]], n_atom__class[atupe[2]],n_atom__class[atupe[3]])
+		#print(newFF___classquadruple__impV2)
+		
+		print("========")
+		print("Goodbye!"  )
+		print("========\n")
 
 ############################################################
 # read input keywords from input file 'ffaffurr.input'
@@ -714,6 +769,13 @@ def get_input():
 	else:
 		sys.exit('== Error: keyword \'fine_tune_charge_transfer\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
 		
+	if ( dict_keywords['fine_tune_charge_transfer'] == True ):
+		astring = get_input_loop_lines(lines, 'number_of_pso_CT')
+		dict_keywords['number_of_pso_CT'] = int(astring)
+			
+	if ( dict_keywords['fine_tune_charge_transfer'] == True ):
+		astring = get_input_loop_lines(lines, 'number_of_processes_CT')
+		dict_keywords['number_of_processes_CT'] = int(astring)
 			
 	if ( dict_keywords['fine_tune_charge_transfer'] == True ):
 		astring = get_input_loop_lines(lines, 'fine_tune_isolated_charges')
@@ -739,12 +801,20 @@ def get_input():
 	else:
 		sys.exit('== Error: keyword \'fine_tune_polarization_energy\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
 		
-	if ( dict_keywords['fine_tune_polarization_energy'] == True ):
-		astring = get_input_loop_lines(lines, 'fine_tune_polarizabilities')
-		if astring in ['False', 'false']:
-			dict_keywords['fine_tune_polarizabilities'] = False
-		elif astring in ['True', 'true']:
-			dict_keywords['fine_tune_polarizabilities'] = True
+	#if ( dict_keywords['fine_tune_polarization_energy'] == True ):
+	astring = get_input_loop_lines(lines, 'fine_tune_polarizabilities')
+	if astring in ['False', 'false']:
+		dict_keywords['fine_tune_polarizabilities'] = False
+	elif astring in ['True', 'true']:
+		dict_keywords['fine_tune_polarizabilities'] = True
+		
+	if ( dict_keywords['fine_tune_polarizabilities'] == True ):
+		astring = get_input_loop_lines(lines, 'number_of_pso_POL')
+		dict_keywords['number_of_pso_POL'] = int(astring)
+			
+	if ( dict_keywords['fine_tune_polarizabilities'] == True ):
+		astring = get_input_loop_lines(lines, 'number_of_processes_POL')
+		dict_keywords['number_of_processes_POL'] = int(astring)
 		
 	print('\n====\n')
 
@@ -1165,6 +1235,127 @@ def get_originalFF_params():
 			type__ChargeTransfer_parameters,\
 			type__averageAlpha0eff, \
 			gamma)
+			
+#######################################################
+# get fhi aims information
+#######################################################
+def get_fhiaims_info(logfile):
+	
+	# read file
+	in_file = open(logfile, 'r')
+	file_lines = in_file.readlines()
+	lines = list(file_lines)
+	in_file.close()
+	
+	# get_fhiaims_xyz
+	n_atom__xyz = {}
+	
+	lines_position = lines.index('  Input geometry:\n')
+	
+	for line in lines[lines_position+4:lines_position+4+n_atoms]:
+		stringa, n_atom, stringb, symbol, x, y, z = line.split(None, 6)
+		n_atom__xyz[int(n_atom.rstrip(":"))-1] = [round(float(x), 3), round(float(y), 3), round(float(z), 3)]
+	
+	# get_fhiaims_hirshfeld_volume
+	n_atom__free_atom_volume = {}
+	n_atom__hirshfeld_volume = {}
+	
+	alist_free_atom_volumes = []
+	for line in lines:
+		if '|   Free atom volume        :' in line:
+			afree_atom_volume = float(line.rsplit(None, 1)[-1])
+			alist_free_atom_volumes.append( afree_atom_volume )
+	
+	alist_hirshfeld_volumes = []
+	for line in lines:
+		if '|   Hirshfeld volume        :' in line:
+			ahirshfeld_volume = float(line.rsplit(None, 1)[-1])
+			alist_hirshfeld_volumes.append( ahirshfeld_volume )
+	
+	if ( len(alist_free_atom_volumes) == 0 ) or ( len(alist_hirshfeld_volumes) == 0 ):
+		sys.exit('== Error: No hirshfeld volume information found in '+logfile+'. Exiting now...')
+	elif ( len(alist_free_atom_volumes) > n_atoms ) or ( len(alist_hirshfeld_volumes) > n_atoms ):
+		alist_free_atom_volumes = alist_free_atom_volumes[-n_atoms:]
+		alist_hirshfeld_volumes = alist_hirshfeld_volumes[-n_atoms:]
+		#sys.exit('== Error in '+logfile+': Too many hirshfeld volume information found. Single-point energy calculations only! Exiting now...')
+	#else:
+	for i in range(n_atoms):
+		n_atom__free_atom_volume[i] = alist_free_atom_volumes[i]
+		n_atom__hirshfeld_volume[i] = alist_hirshfeld_volumes[i]
+		
+	# get_fhiaims_charges
+	n_atom__charges = {}
+	list_charges = []
+	
+	if dict_keywords['fine_tune_charge'] == 'RESP':
+		little_path = logfile.rsplit('/',1)[0]
+		
+		#read respfile
+		with open(os.path.join(little_path, 'resp.chrg'), 'r') as respfile:
+			resp_lines = respfile.readlines()
+			
+		for i in resp_lines:
+			list_charges.append(float(i))
+	elif dict_keywords['fine_tune_charge'] == 'False':
+		n_atom__charges = {}
+		list_charges = []
+	else:
+		if dict_keywords['fine_tune_charge'] == 'Hirshfeld':
+			string = '|   Hirshfeld charge        :'
+		elif dict_keywords['fine_tune_charge'] == 'ESP':
+			string = 'ESP charge:'
+		
+		for line in lines:
+			if string in line:
+				charge = float(line.rsplit(None, 1)[-1])
+				list_charges.append( charge )
+		
+		# FIXBUG in FHI-aims
+		# ESP charges are of opposite charge in some FHI-aims versions, please check
+		#if dict_keywords['fine_tune_charge'] == 'ESP': list_charges = [ -x for x in list_charges ]
+		
+		if len(list_charges) == 0:
+			sys.exit('== Error: No charge information found in '+logfile+'. Exiting now...')
+		elif len(list_charges) > n_atoms:
+			#sys.exit('== Error in '+logfile+': Too much charge information found. Single point energy calculations only! Exiting now...')
+			list_charges = list_charges[-n_atoms:]
+		#else:
+	if list_charges:
+		for i in range(n_atoms):
+			n_atom__charges[i] = list_charges[i]
+	
+	return(n_atom__xyz, n_atom__free_atom_volume, n_atom__hirshfeld_volume, n_atom__charges )
+
+##########################################################################
+# get logfiles info
+##########################################################################
+def get_logfiles_info():
+
+	listofdicts_logfiles___n_atom__xyz = []
+	index__listofdicts_logfiles___n_atom__xyz = {}
+	
+	logfile__n_atom__free_atom_volume = {}
+	logfile__n_atom__hirshfeld_volume = {}
+	
+	logfile__n_atom__charges = {}
+	
+	for logfile in list_logfiles:
+		n_atom__xyz, n_atom__free_atom_volume, n_atom__hirshfeld_volume, n_atom__charges= get_fhiaims_info(logfile)
+		listofdicts_logfiles___n_atom__xyz.append( n_atom__xyz )
+		
+		index = logfile.rsplit('/', 2)[1]
+		index__listofdicts_logfiles___n_atom__xyz[index] = n_atom__xyz
+		
+		logfile__n_atom__free_atom_volume[logfile] = n_atom__free_atom_volume
+		logfile__n_atom__hirshfeld_volume[logfile] = n_atom__hirshfeld_volume
+		
+		logfile__n_atom__charges[logfile] = n_atom__charges
+	
+	return(listofdicts_logfiles___n_atom__xyz, \
+	       index__listofdicts_logfiles___n_atom__xyz, \
+	       logfile__n_atom__free_atom_volume, \
+	       logfile__n_atom__hirshfeld_volume, \
+	       logfile__n_atom__charges)
 
 ############################################################
 # get pair-wise charge parameters for Coulomb interactions
@@ -1710,9 +1901,9 @@ def get_FF_energy(classpair__Kb, \
 					type__zero_transfer_distance, \
 					type__ChargeTransfer_parameters, \
 					type__averageAlpha0eff, \
-					gamma, \
-					type__averageR0eff):
+					gamma):
 	
+	type__averageR0eff = get_R0eff()
 						
 	index__Energies_FF = {}
 	for index, n_atom__xyz in index__listofdicts_logfiles___n_atom__xyz.items():
@@ -1777,6 +1968,19 @@ def get_FF_energy(classpair__Kb, \
 	return(index__Energies_FF)
 
 ##########################################################
+#  get DFT energie of training set
+###########################################################
+def get_index__fhiaims_energies():
+	index__Energies_DFT = {}
+	with open(os.path.join(os.getcwd(), 'energies.pbe+vdw_training.kcal'), 'r') as DFT_energy:
+		lines = DFT_energy.readlines()
+		
+		for line in lines:
+			index = line.split(None, 1)[0]
+			index__Energies_DFT[index] = float(line.split(None, 1)[1])
+	return(index__Energies_DFT)
+
+##########################################################
 #  get MAE of training data between DFT energie and FF energies
 ###########################################################
 def get_MAE(classpair__Kb, \
@@ -1797,7 +2001,7 @@ def get_MAE(classpair__Kb, \
 			 type__ChargeTransfer_parameters, \
 			 type__averageAlpha0eff, \
 			 gamma, \
-			 type__averageR0eff):
+			 index__Energies_DFT):
 				 
 	index__Energies_FF = get_FF_energy(classpair__Kb, \
 					classpair__r0, \
@@ -1816,16 +2020,16 @@ def get_MAE(classpair__Kb, \
 					type__zero_transfer_distance, \
 					type__ChargeTransfer_parameters,\
 					type__averageAlpha0eff, \
-					gamma, \
-					type__averageR0eff)
+					gamma)
 	
-	index__Energies_DFT = {}
-	with open(os.path.join(os.getcwd(), 'energies.pbe+vdw_training.kcal'), 'r') as DFT_energy:
-		lines = DFT_energy.readlines()
-		
-		for line in lines:
-			index = line.split(None, 1)[0]
-			index__Energies_DFT[index] = float(line.split(None, 1)[1])
+	#index__Energies_DFT = {}
+	#with open(os.path.join(os.getcwd(), 'energies.pbe+vdw_training.kcal'), 'r') as DFT_energy:
+	#	lines = DFT_energy.readlines()
+	#	
+	#	for line in lines:
+	#		index = line.split(None, 1)[0]
+	#		index__Energies_DFT[index] = float(line.split(None, 1)[1])
+	
 		
 	#MAE
 	x_data = []
@@ -1977,42 +2181,42 @@ def get_logfiles():
 # get xyz for a specific FHI-aims logfile
 ############################################################
 
-def get_fhiaims_xyz(logfile):
-
-	# read file
-	in_file = open(logfile, 'r')
-	file_lines = in_file.readlines()
-	lines = list(file_lines)
-	in_file.close()
-	
-	n_atom__xyz = {}
-	
-	lines_position = lines.index('  Input geometry:\n')
-	
-	for line in lines[lines_position+4:lines_position+4+n_atoms]:
-		stringa, n_atom, stringb, symbol, x, y, z = line.split(None, 6)
-		n_atom__xyz[int(n_atom.rstrip(":"))-1] = [round(float(x), 3), round(float(y), 3), round(float(z), 3)]
-	
-	return(n_atom__xyz)
+#def get_fhiaims_xyz(logfile):
+#
+#	# read file
+#	in_file = open(logfile, 'r')
+#	file_lines = in_file.readlines()
+#	lines = list(file_lines)
+#	in_file.close()
+#	
+#	n_atom__xyz = {}
+#	
+#	lines_position = lines.index('  Input geometry:\n')
+#	
+#	for line in lines[lines_position+4:lines_position+4+n_atoms]:
+#		stringa, n_atom, stringb, symbol, x, y, z = line.split(None, 6)
+#		n_atom__xyz[int(n_atom.rstrip(":"))-1] = [round(float(x), 3), round(float(y), 3), round(float(z), 3)]
+#	
+#	return(n_atom__xyz)
 
 ############################################################
 # get xyz for all logfiles
 ############################################################
 
-def get_logfiles_xyz():
-
-	listofdicts_logfiles___n_atom__xyz = []
-	index__listofdicts_logfiles___n_atom__xyz = {}
-	
-	for logfile in list_logfiles:
-		n_atom__xyz = get_fhiaims_xyz(logfile)
-		listofdicts_logfiles___n_atom__xyz.append( n_atom__xyz )
-		
-		index = logfile.rsplit('/', 2)[1]
-		index__listofdicts_logfiles___n_atom__xyz[index] = n_atom__xyz
-	
-	return(listofdicts_logfiles___n_atom__xyz, \
-	       index__listofdicts_logfiles___n_atom__xyz)
+#def get_logfiles_xyz():
+#
+#	listofdicts_logfiles___n_atom__xyz = []
+#	index__listofdicts_logfiles___n_atom__xyz = {}
+#	print('read logfile xyz in list')
+#	for logfile in list_logfiles:
+#		n_atom__xyz = get_fhiaims_xyz(logfile)
+#		listofdicts_logfiles___n_atom__xyz.append( n_atom__xyz )
+#		
+#		index = logfile.rsplit('/', 2)[1]
+#		index__listofdicts_logfiles___n_atom__xyz[index] = n_atom__xyz
+#	
+#	return(listofdicts_logfiles___n_atom__xyz, \
+#	       index__listofdicts_logfiles___n_atom__xyz)
 
 ############################################################
 # fine-tune r0 by averaging distances over all FHI-aims input logfiles
@@ -2092,52 +2296,52 @@ def get_average_theta0():
 # get charges of every atom for a specific FHI-aims logfile
 ############################################################
 
-def get_fhiaims_charges(logfile):
-
-	n_atom__charges = {}
-	list_charges = []
-	
-	if dict_keywords['fine_tune_charge'] == 'RESP':
-		little_path = logfile.rsplit('/',1)[0]
-		
-		#read respfile
-		with open(os.path.join(little_path, 'resp.chrg'), 'r') as respfile:
-			resp_lines = respfile.readlines()
-			
-		for i in resp_lines:
-			list_charges.append(float(i))
-	else:        
-		# read logfile
-		in_file = open(logfile, 'r')
-		file_lines = in_file.readlines()
-		lines = list(file_lines)
-		in_file.close()
-		
-		
-		if dict_keywords['fine_tune_charge'] == 'Hirshfeld':
-			string = '|   Hirshfeld charge        :'
-		elif dict_keywords['fine_tune_charge'] == 'ESP':
-			string = 'ESP charge:'
-		
-		for line in lines:
-			if string in line:
-				charge = float(line.rsplit(None, 1)[-1])
-				list_charges.append( charge )
-		
-		# FIXBUG in FHI-aims
-		# ESP charges are of opposite charge in some FHI-aims versions, please check
-		#if dict_keywords['fine_tune_charge'] == 'ESP': list_charges = [ -x for x in list_charges ]
-		
-		if len(list_charges) == 0:
-			sys.exit('== Error: No charge information found in '+logfile+'. Exiting now...')
-		elif len(list_charges) > n_atoms:
-			#sys.exit('== Error in '+logfile+': Too much charge information found. Single point energy calculations only! Exiting now...')
-			list_charges = list_charges[-n_atoms:]
-		#else:
-	for i in range(n_atoms):
-		n_atom__charges[i] = list_charges[i]
-	
-	return(n_atom__charges)
+#def get_fhiaims_charges(logfile):
+#
+#	n_atom__charges = {}
+#	list_charges = []
+#	
+#	if dict_keywords['fine_tune_charge'] == 'RESP':
+#		little_path = logfile.rsplit('/',1)[0]
+#		
+#		#read respfile
+#		with open(os.path.join(little_path, 'resp.chrg'), 'r') as respfile:
+#			resp_lines = respfile.readlines()
+#			
+#		for i in resp_lines:
+#			list_charges.append(float(i))
+#	else:        
+#		# read logfile
+#		in_file = open(logfile, 'r')
+#		file_lines = in_file.readlines()
+#		lines = list(file_lines)
+#		in_file.close()
+#		
+#		
+#		if dict_keywords['fine_tune_charge'] == 'Hirshfeld':
+#			string = '|   Hirshfeld charge        :'
+#		elif dict_keywords['fine_tune_charge'] == 'ESP':
+#			string = 'ESP charge:'
+#		
+#		for line in lines:
+#			if string in line:
+#				charge = float(line.rsplit(None, 1)[-1])
+#				list_charges.append( charge )
+#		
+#		# FIXBUG in FHI-aims
+#		# ESP charges are of opposite charge in some FHI-aims versions, please check
+#		#if dict_keywords['fine_tune_charge'] == 'ESP': list_charges = [ -x for x in list_charges ]
+#		
+#		if len(list_charges) == 0:
+#			sys.exit('== Error: No charge information found in '+logfile+'. Exiting now...')
+#		elif len(list_charges) > n_atoms:
+#			#sys.exit('== Error in '+logfile+': Too much charge information found. Single point energy calculations only! Exiting now...')
+#			list_charges = list_charges[-n_atoms:]
+#		#else:
+#	for i in range(n_atoms):
+#		n_atom__charges[i] = list_charges[i]
+#	
+#	return(n_atom__charges)
 
 ############################################################
 # fine-tune partial charges by averaging charges over all FHI-aims input logfiles
@@ -2155,7 +2359,7 @@ def get_average_charge():
 		type__collectedCharges[atype] = []
 	
 	for logfile in list_logfiles:
-		n_atom__charges = get_fhiaims_charges(logfile)
+		n_atom__charges = logfile__n_atom__charges[logfile]
 		for i in range(n_atoms):
 			type__collectedCharges[ n_atom__type[i] ].append( n_atom__charges[i] )
 	
@@ -2256,41 +2460,41 @@ def get_R0free():
 # get free atom volumes & Hirshfeld volumes atom-wise for a specific FHI-aims logfile
 ############################################################
 
-def get_fhiaims_hirshfeld_volume(logfile):
-
-	# read file
-	in_file = open(logfile, 'r')
-	file_lines = in_file.readlines()
-	lines = list(file_lines)
-	in_file.close()
-	
-	n_atom__free_atom_volume = {}
-	n_atom__hirshfeld_volume = {}
-	
-	alist_free_atom_volumes = []
-	for line in lines:
-		if '|   Free atom volume        :' in line:
-			afree_atom_volume = float(line.rsplit(None, 1)[-1])
-			alist_free_atom_volumes.append( afree_atom_volume )
-	
-	alist_hirshfeld_volumes = []
-	for line in lines:
-		if '|   Hirshfeld volume        :' in line:
-			ahirshfeld_volume = float(line.rsplit(None, 1)[-1])
-			alist_hirshfeld_volumes.append( ahirshfeld_volume )
-	
-	if ( len(alist_free_atom_volumes) == 0 ) or ( len(alist_hirshfeld_volumes) == 0 ):
-		sys.exit('== Error: No hirshfeld volume information found in '+logfile+'. Exiting now...')
-	elif ( len(alist_free_atom_volumes) > n_atoms ) or ( len(alist_hirshfeld_volumes) > n_atoms ):
-		alist_free_atom_volumes = alist_free_atom_volumes[-n_atoms:]
-		alist_hirshfeld_volumes = alist_hirshfeld_volumes[-n_atoms:]
-		#sys.exit('== Error in '+logfile+': Too many hirshfeld volume information found. Single-point energy calculations only! Exiting now...')
-	#else:
-	for i in range(n_atoms):
-		n_atom__free_atom_volume[i] = alist_free_atom_volumes[i]
-		n_atom__hirshfeld_volume[i] = alist_hirshfeld_volumes[i]
-	
-	return(n_atom__free_atom_volume, n_atom__hirshfeld_volume)
+#def get_fhiaims_hirshfeld_volume(logfile):
+#
+#	# read file
+#	in_file = open(logfile, 'r')
+#	file_lines = in_file.readlines()
+#	lines = list(file_lines)
+#	in_file.close()
+#	
+#	n_atom__free_atom_volume = {}
+#	n_atom__hirshfeld_volume = {}
+#	
+#	alist_free_atom_volumes = []
+#	for line in lines:
+#		if '|   Free atom volume        :' in line:
+#			afree_atom_volume = float(line.rsplit(None, 1)[-1])
+#			alist_free_atom_volumes.append( afree_atom_volume )
+#	
+#	alist_hirshfeld_volumes = []
+#	for line in lines:
+#		if '|   Hirshfeld volume        :' in line:
+#			ahirshfeld_volume = float(line.rsplit(None, 1)[-1])
+#			alist_hirshfeld_volumes.append( ahirshfeld_volume )
+#	
+#	if ( len(alist_free_atom_volumes) == 0 ) or ( len(alist_hirshfeld_volumes) == 0 ):
+#		sys.exit('== Error: No hirshfeld volume information found in '+logfile+'. Exiting now...')
+#	elif ( len(alist_free_atom_volumes) > n_atoms ) or ( len(alist_hirshfeld_volumes) > n_atoms ):
+#		alist_free_atom_volumes = alist_free_atom_volumes[-n_atoms:]
+#		alist_hirshfeld_volumes = alist_hirshfeld_volumes[-n_atoms:]
+#		#sys.exit('== Error in '+logfile+': Too many hirshfeld volume information found. Single-point energy calculations only! Exiting now...')
+#	#else:
+#	for i in range(n_atoms):
+#		n_atom__free_atom_volume[i] = alist_free_atom_volumes[i]
+#		n_atom__hirshfeld_volume[i] = alist_hirshfeld_volumes[i]
+#	
+#	return(n_atom__free_atom_volume, n_atom__hirshfeld_volume)
 
 ############################################################
 # this function returns dict2, but with values set to zero that are also zero in dict1
@@ -2327,7 +2531,9 @@ def get_R0eff():
 	for logfile in list_logfiles:
 	
 		# get free atom volumes & Hirshfeld volumes atom-wise
-		n_atom__free_atom_volume, n_atom__hirshfeld_volume = get_fhiaims_hirshfeld_volume(logfile)
+		#n_atom__free_atom_volume, n_atom__hirshfeld_volume = get_fhiaims_hirshfeld_volume(logfile)
+		n_atom__free_atom_volume = logfile__n_atom__free_atom_volume[logfile]
+		n_atom__hirshfeld_volume = logfile__n_atom__hirshfeld_volume[logfile]
 	
 		# calculate R0eff atom-wise and collect type-wise
 		for i in range(n_atoms):
@@ -2483,7 +2689,9 @@ def get_epsilons_TS():
 	for logfile in list_logfiles:
 	
 		# get free atom volumes & Hirshfeld volumes atom-wise
-		n_atom__free_atom_volume, n_atom__hirshfeld_volume = get_fhiaims_hirshfeld_volume(logfile)
+		#n_atom__free_atom_volume, n_atom__hirshfeld_volume = get_fhiaims_hirshfeld_volume(logfile)
+		n_atom__free_atom_volume = logfile__n_atom__free_atom_volume[logfile]
+		n_atom__hirshfeld_volume = logfile__n_atom__hirshfeld_volume[logfile]
 	
 		# calculate R0eff, C6eff, alpha0eff atom-wise and collect type-wise
 		for i in range(n_atoms):
@@ -3676,7 +3884,7 @@ def PSO_objective_ChargTrans(x, *args):
 	type__charge, \
 	type__averageAlpha0eff, \
 	gamma, \
-	type__averageR0eff = args
+	index__Energies_DFT = args
 	
 	MAE = get_MAE(classpair__Kb, \
 					classpair__r0, \
@@ -3696,7 +3904,7 @@ def PSO_objective_ChargTrans(x, *args):
 					pso_type__ChargeTransfer_parameters, \
 					type__averageAlpha0eff, \
 					gamma, \
-					type__averageR0eff)
+					index__Energies_DFT)
 	
 	return(MAE)
 
@@ -3715,7 +3923,8 @@ def PSO_optimize(classpair__Kb, \
 					type__charge, \
 					type__averageAlpha0eff, \
 					gamma, \
-					type__averageR0eff):
+					index__Energies_DFT, \
+					processes_num):
 	
 	type__polar   = []
 		
@@ -3750,7 +3959,7 @@ def PSO_optimize(classpair__Kb, \
 			 type__charge, \
 			 type__averageAlpha0eff, \
 			 gamma, \
-			 type__averageR0eff)
+			 index__Energies_DFT)
 	
 	# Define the lower and upper bounds respectively
 	lb = []
@@ -3768,7 +3977,7 @@ def PSO_optimize(classpair__Kb, \
 		lb.append( -15 )
 		ub.append( 0 )
 			
-	xopt, fopt = pso(PSO_objective_ChargTrans, lb, ub, swarmsize = 40, maxiter=10000,  processes=4, args=args) 
+	xopt, fopt = pso(PSO_objective_ChargTrans, lb, ub, swarmsize = 40, maxiter=10000,  processes=processes_num, args=args) 
 	
 	b = -1
 	
@@ -3825,7 +4034,7 @@ def PSO_objective_polarizabilities(x, *args):
 	 CN_factor, \
 	 type__zero_transfer_distance, \
 	 type__ChargeTransfer_parameters, \
-	 type__averageR0eff = args
+	 index__Energies_DFT = args
 	
 	MAE = get_MAE(classpair__Kb, \
 					classpair__r0, \
@@ -3845,7 +4054,7 @@ def PSO_objective_polarizabilities(x, *args):
 					type__ChargeTransfer_parameters, \
 					pso_type__averageAlpha0eff, \
 					pso_gamma, \
-					type__averageR0eff)
+					index__Energies_DFT)
 			
 	return(MAE)
 
@@ -3865,7 +4074,8 @@ def get_polarizabilities_PSO(classpair__Kb, \
 					CN_factor, \
 					type__zero_transfer_distance, \
 					type__ChargeTransfer_parameters, \
-					type__averageR0eff):
+					index__Energies_DFT, \
+					processes_num):
 	
 	type__averageAlpha0eff = get_alpha0eff()
 		
@@ -3885,7 +4095,7 @@ def get_polarizabilities_PSO(classpair__Kb, \
 			 CN_factor, \
 			 type__zero_transfer_distance, \
 			 type__ChargeTransfer_parameters, \
-			 type__averageR0eff)	
+			 index__Energies_DFT)	
 		
 	# Define the lower and upper bounds respectively
 	lb = []
@@ -3893,14 +4103,14 @@ def get_polarizabilities_PSO(classpair__Kb, \
 		
 	for key in type__averageAlpha0eff.keys():
 		lb.append( type__averageAlpha0eff[key] * 0.2 )
-		ub.append( type__averageAlpha0eff[key] * 2 )
+		ub.append( type__averageAlpha0eff[key] * 3 )
 		
 	# gamma	
-	lb.append( 0.85 )
+	lb.append( 0.8 )
 	ub.append( 1.2 )
 	
 			
-	xopt, fopt = pso(PSO_objective_polarizabilities, lb, ub, swarmsize = 40, maxiter=10000, processes=4, args=args)
+	xopt, fopt = pso(PSO_objective_polarizabilities, lb, ub, swarmsize = 40, maxiter=10000, processes=processes_num, args=args)
 	
 	b = -1
 	
@@ -3961,7 +4171,9 @@ def get_alpha0eff():
 	for logfile in list_logfiles:
 	
 		# get free atom volumes & Hirshfeld volumes atom-wise
-		n_atom__free_atom_volume, n_atom__hirshfeld_volume = get_fhiaims_hirshfeld_volume(logfile)
+		#n_atom__free_atom_volume, n_atom__hirshfeld_volume = get_fhiaims_hirshfeld_volume(logfile)
+		n_atom__free_atom_volume = logfile__n_atom__free_atom_volume[logfile]
+		n_atom__hirshfeld_volume = logfile__n_atom__hirshfeld_volume[logfile]
 	
 		# calculate alpha0eff atom-wise and collect type-wise
 		for i in n_atom_nohyd:
@@ -4135,7 +4347,7 @@ def get_induced_dipole(n_atom__xyz, pairs__distances, type__averageAlpha0eff, ga
 			dipole_Me_2 += n_atom__alpha0eff[ion_index] * numpy.dot(n_atom__dipole[i] , TMei)
 			
 	N = 0
-	while (numpy.linalg.norm( dipole_Me_2 - dipole_Me_1 ) > 2.0819434e-8):           # 1D = 0.020819434 e*nm   10**(-6) D > e*nm        
+	while numpy.linalg.norm( dipole_Me_2 - dipole_Me_1 ) > 2.0819434e-8:           # 1D = 0.020819434 e*nm   10**(-6) D > e*nm        
 		#print('N', N)
 		#print(numpy.linalg.norm( dipole_Me_2 - dipole_Me_1 ))
 		dipole_Me_1 = dipole_Me_2
@@ -4153,8 +4365,6 @@ def get_induced_dipole(n_atom__xyz, pairs__distances, type__averageAlpha0eff, ga
 		#print('dipole_Me_2', dipole_Me_2)
 		
 		N += 1
-		if N >= 30:
-			sys.exit('== Error: Induced dipole have convergence problem. Narrowing down the range of gamma or polarizabilities in get_polarizabilities_PSO may help. Exiting now...')
 	
 	n_atom__dipole[ion_index] = dipole_Me_2
 	
@@ -4187,9 +4397,11 @@ def get_polarization_energy(n_atom__xyz, pairs__distances, type__averageAlpha0ef
 # get polarization energies
 ############################################################
 
-def get_polarization_energies(type__averageAlpha0eff, type__averageR0eff, type__charge, gamma, CN_factor, type__zero_transfer_distance, type__ChargeTransfer_parameters):
+def get_polarization_energies(type__averageAlpha0eff, type__charge, gamma, CN_factor, type__zero_transfer_distance, type__ChargeTransfer_parameters):
 
 	list_Epol = []
+	
+	type__averageR0eff = get_R0eff()
 	
 	for n_atom__xyz in listofdicts_logfiles___n_atom__xyz:
 		
@@ -4695,8 +4907,8 @@ def print_charge_transfer_params(CN_factor, \
 ############################################################
 # print polarization energy parameters
 ############################################################	
-def print_polarization_params(origFF___type__averageAlpha0eff, newFF___type__averageAlpha0eff, newFF___gamma, type__averageR0eff):
-
+def print_polarization_params(newFF___type__averageAlpha0eff, newFF___gamma):
+	
 	print('Polarization parameters:')
 	print('---------------------------')
 	print('                  ')
@@ -4709,14 +4921,8 @@ def print_polarization_params(origFF___type__averageAlpha0eff, newFF___type__ave
 		
 	if dict_keywords['fine_tune_polarization_energy'] == True:
 		print('                  ')
-		print('   Atom type   Polarizability   Polarizability   RvdW   Corresponding atoms')
-		print('                  (origFF)         (newFF)                                 ')
-		print('---------------------------------------------------------------------------')
-		
-		if origFF___type__averageAlpha0eff:
-			origFF___type__averageAlpha0eff = copy.deepcopy(origFF___type__averageAlpha0eff)
-		else:
-			origFF___type__averageAlpha0eff = get_alpha0eff()
+		print('   Atom type   Param Alpha   Corresponding atoms')
+		print('------------------------------------------------')
 		
 		sortedlist_types = []
 	
@@ -4725,7 +4931,7 @@ def print_polarization_params(origFF___type__averageAlpha0eff, newFF___type__ave
 		sortedlist_types = sorted(sortedlist_types)
 		
 		for key in sortedlist_types:
-			printf("   %9d     %8.5f          %8.5f   %8.3f      %2s\n", int(key), origFF___type__averageAlpha0eff[str(key)], newFF___type__averageAlpha0eff[str(key)], type__averageR0eff[str(key)], class__element[int(type__class[str(key)])] )
+			printf("   %9d  %8.5f        %2s\n", int(key), newFF___type__averageAlpha0eff[str(key)], class__element[int(type__class[str(key)])] )
 	
 	
 ############################################################
@@ -4750,7 +4956,8 @@ def indent(elem, level=0):
 ############################################################
 ############################################################
 
-def write_OpenMM_ff_params_file(newFF___classpair__r0, \
+def write_OpenMM_ff_params_file(file_name, \
+							 newFF___classpair__r0, \
 							 origFF___classpair__Kb, \
 							 newFF___classtriple__theta0, \
 							 origFF___classtriple__Ktheta, \
@@ -4913,21 +5120,22 @@ def write_OpenMM_ff_params_file(newFF___classpair__r0, \
 	
 	indent(root)
 	et = ET.ElementTree(root)
-	et.write("ffaffurr-oplsaa.xml", encoding="utf-8", xml_declaration=True,  method="xml") 	
+	
+	et.write(file_name, encoding="utf-8", xml_declaration=True,  method="xml") 	
 	return()
 
 ############################################################
 ############################################################
 
-def write_custombondforce_para(newFF___pairs__sigma, \
+def write_custombondforce_para(file_name, \
+                                newFF___pairs__sigma, \
                                 newFF___pairs__epsilon, \
                                 CN_factor, \
                                 f15, \
                                 type__zero_transfer_distance, \
 		                        type__ChargeTransfer_parameters, \
 		                        newFF___type__averageAlpha0eff, \
-		                        newFF___gamma, \
-		                        type__averageR0eff):
+		                        newFF___gamma):
 	
 	# creat root
 	root = ET.Element("CustomForce")
@@ -4962,11 +5170,11 @@ def write_custombondforce_para(newFF___pairs__sigma, \
 		
 		# grandson polarizability
 		for atomType, polar in newFF___type__averageAlpha0eff.items():
-			polaParams = ET.SubElement(polarization, "Polarize", attrib={'type': str(atomType), 'polarizability': str(polar), 'rvdW': str(type__averageR0eff[atomType])})
+			polaParams = ET.SubElement(polarization, "Polarize", attrib={'type': str(atomType), 'polarizability': str(polar)})
 	
 	indent(root)
 	et = ET.ElementTree(root)
-	et.write("CustomForce.xml", encoding="utf-8", xml_declaration=True,  method="xml") 
+	et.write(file_name, encoding="utf-8", xml_declaration=True,  method="xml") 
 	
 	return()
 	
