@@ -249,7 +249,8 @@ def main():
 				newFF___CN_factor, \
 				newFF___type__zero_transfer_distance, \
 				newFF___type__ChargeTransfer_parameters, \
-				fopt = PSO_optimize(origFF___classpair__Kb, \
+				fopt, \
+				f_list = PSO_optimize(origFF___classpair__Kb, \
 									newFF___classpair__r0, \
 									origFF___classtriple__Ktheta, \
 									newFF___classtriple__theta0, \
@@ -270,7 +271,7 @@ def main():
 			# fine-tune polarizabilities												  
 			elif dict_keywords['fine_tune_polarizabilities'] == True:
 				processes_num = dict_keywords['number_of_processes_POL']
-				newFF___type__averageAlpha0eff, newFF___gamma, fopt_pol = get_polarizabilities_PSO(origFF___classpair__Kb, \
+				newFF___type__averageAlpha0eff, newFF___gamma, fopt, f_list = get_polarizabilities_PSO(origFF___classpair__Kb, \
 																			newFF___classpair__r0, \
 																			origFF___classtriple__Ktheta, \
 																			newFF___classtriple__theta0, \
@@ -289,9 +290,17 @@ def main():
 																			index__Energies_DFT, \
 																			processes_num)
 																			
-			
+			# write out objetives of each iteration of pso
+			file_name_pso = 'pso_iteration_' + str(i+1)																
+			with open(file_name_pso, 'w') as pso:
+				for key, values in f_list.items():
+					pso.write('{:04d}'.format(key + 1))
+					for j in values:
+						pso.write('{:12.8f}'.format(j))
+					pso.write('\n')
+					
 			# write OpenMM force field parameter file
-			file_name_1 = 'ffaffurr-oplsaa.' +str(i) + '.xml'
+			file_name_1 = 'ffaffurr-oplsaa.' +str(i+1) + '.xml'
 			write_OpenMM_ff_params_file(file_name_1, \
 										newFF___classpair__r0, \
 										origFF___classpair__Kb, \
@@ -308,7 +317,7 @@ def main():
 										newFF___type__charge, \
 										f14, f15)
 			
-			file_name_2 = 'CustomForce.' +str(i) + '.xml'
+			file_name_2 = 'CustomForce.' +str(i+1) + '.xml'
 			# write Custombond force parameter file
 			write_custombondforce_para(file_name_2, \
 										newFF___pairs__sigma, \
@@ -3977,7 +3986,7 @@ def PSO_optimize(classpair__Kb, \
 		lb.append( -15 )
 		ub.append( 0 )
 			
-	xopt, fopt = pso(PSO_objective_ChargTrans, lb, ub, swarmsize = 40, maxiter=10000,  processes=processes_num, args=args) 
+	xopt, fopt, f_list = pso(PSO_objective_ChargTrans, lb, ub, swarmsize = 40, maxiter=10000,  processes=processes_num, args=args) 
 	
 	b = -1
 	
@@ -3997,7 +4006,7 @@ def PSO_optimize(classpair__Kb, \
 		offset = -1 * slope * new___type__zero_transfer_distance[key]
 		new___type__ChargeTransfer_parameters[key] = [ slope, offset]
 	
-	return(new___CN_factor, new___type__zero_transfer_distance, new___type__ChargeTransfer_parameters, fopt)
+	return(new___CN_factor, new___type__zero_transfer_distance, new___type__ChargeTransfer_parameters, fopt, f_list)
 
 ############################################################
 # get atomic polarizabilities with Partical Swarm Optimization
@@ -4110,7 +4119,7 @@ def get_polarizabilities_PSO(classpair__Kb, \
 	ub.append( 1.2 )
 	
 			
-	xopt, fopt = pso(PSO_objective_polarizabilities, lb, ub, swarmsize = 40, maxiter=10000, processes=processes_num, args=args)
+	xopt, fopt, f_list = pso(PSO_objective_polarizabilities, lb, ub, swarmsize = 40, maxiter=10000, processes=processes_num, args=args)
 	
 	b = -1
 	
@@ -4122,7 +4131,7 @@ def get_polarizabilities_PSO(classpair__Kb, \
 	b += 1
 	new___gamma = xopt[b]
 	
-	return(new___type__averageAlpha0eff, new___gamma, fopt)
+	return(new___type__averageAlpha0eff, new___gamma, fopt, f_list)
 	
 ############################################################
 # get coordination number(CN) of cation
