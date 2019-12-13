@@ -840,6 +840,13 @@ def get_input():
 			sys.exit('== Error: keyword \'fine_tune_charges_distribution\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
 	else:
 		dict_keywords['fine_tune_charges_distribution'] = False
+		
+	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ):
+		astring = get_input_loop_lines(lines, 'fine_tune_starting_points')
+		if astring in ['False', 'false']:
+			dict_keywords['fine_tune_starting_points'] = 'False'
+		else:
+			dict_keywords['fine_tune_starting_points'] = astring
 				
 	if ( dict_keywords['fine_tune_charge'] != 'False' ) and ( dict_keywords['fine_tune_charge_transfer'] != False ):
 		sys.exit('== Error: Average charges and charge transfer can not be used at the same time. Check input file \'ffaffurr.input\'. Exiting now...')
@@ -4031,8 +4038,19 @@ def PSO_optimize(classpair__Kb, \
 	for key in type__ChargeTransfer_parameters.keys():
 		lb.append( -15 )
 		ub.append( 0 )
-			
-	xopt, fopt, f_list, x_list = pso(PSO_objective_ChargTrans, lb, ub, swarmsize = 40, maxiter=10000,  processes=processes_num, args=args) 
+	
+	# Initial points
+	if dict_keywords['fine_tune_starting_points'] == 'False':
+		initial = None
+	else:
+		initial_file = dict_keywords['fine_tune_starting_points']
+		
+		n=os.path.join(os.getcwd(), initial_file)
+		d=pandas.read_csv(n, sep="\s+", header=None)
+
+		initial = d.values
+	
+	xopt, fopt, f_list, x_list = pso(PSO_objective_ChargTrans, lb, ub, swarmsize = 40, maxiter=40,  processes=processes_num, args=args, initial_pos=initial) 
 	
 	b = -1
 	
@@ -4309,7 +4327,18 @@ def get_ChargTran_CharDistr_pso(type__charge, \
 		lb.append( -15 )
 		ub.append( 0 )
 	
-	xopt, fopt, f_list, x_list = pso(PSO_objective_ChargDistr, lb, ub, swarmsize = 40, maxiter=100,  minfunc=1e-16, processes=processes_num, args=args) 
+	# Initial points
+	if dict_keywords['fine_tune_starting_points'] == 'False':
+		initial = None
+	else:
+		initial_file = dict_keywords['fine_tune_starting_points']
+		
+		n=os.path.join(os.getcwd(), initial_file)
+		d=pandas.read_csv(n, sep="\s+", header=None)
+
+		initial = d.values
+	
+	xopt, fopt, f_list, x_list = pso(PSO_objective_ChargDistr, lb, ub, swarmsize = 40, maxiter=100,  minfunc=1e-16, processes=processes_num, args=args, initial_pos=initial) 
 	print(fopt)
 	b = -1
 	
