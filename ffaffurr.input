@@ -248,6 +248,15 @@ fine_tune_isolated_charges False
 #fine_tune_charges_distribution ESP
 fine_tune_charges_distribution RESP
 
+# only if fine_tune_charge_transfer == ChargDistr OR fine_tune_charge_transfer == Tot:
+# choose starting points of PSO:
+#   -> generate random points as starting points
+#      (use: fine_tune_starting_points False)
+#   OR define some of the starting points
+#      (use: fine_tune_starting_points FILE_OF_THE_STARTING_POINTS)
+fine_tune_starting_points False
+#fine_tune_starting_points CT_initial
+
 # Polarization terms are of form -0.5 * Alpha * E * E0 :
 # Alpha = polarizability of atoms
 #     E = total electrostatic field produced by atomic charges and induced dipole
