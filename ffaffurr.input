@@ -68,7 +68,7 @@ Regression_torsionalV_Method Ridge
 
 # only if fine_tune_torsionalV == Regression AND Regression_torsionalV_Method == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_torsionalV 0.011647
+regularization_parameter_torsionalV 0.000700
 
 # improper torsion terms are of form:
 #       V2imp  * ( 1+cos(2*θ − θ0) )
@@ -91,7 +91,7 @@ Regression_imptorsionalV_Method Ridge
 
 # only if fine_tune_imptorsionalV == Regression AND Regression_imptorsionalV_Method == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_imptorsionalV 0.000100
+regularization_parameter_imptorsionalV 30.0
 
 # van der Waals (vdW; Lennard-Jones) terms are of form:
 #       4*epsilon * f * [ (sigma/r)**12 - (sigma/r)**6 ]
@@ -140,7 +140,7 @@ RegressionEpsilonMethod Lasso
 
 # only if RegressionEpsilonMethod == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_epsilon 0.000001
+regularization_parameter_epsilon 30.0
 
 # only if fine_tune_epsilon == Regression{TS/MBD/Tot} AND RegressionEpsilonMethod == Lasso:
 #   restrict regression-fitted epsilon parameters to be positive
@@ -206,19 +206,22 @@ fine_tune_only_f14 False
 # b = offset of charge transfer
 #     -> don't consider charge transfer
 #         (use: fine_tune_charge_transfer False)
-#      OR consider charge transfer
-#         (use: fine_tune_charge_transfer True) 
+#      OR fitting charge transfer params to total energies of FHI-aims input logfiles
+#         (use: fine_tune_charge_transfer Tot) 
+#      OR fitting charge transfer params to charge distribution of FHI-aims input logfiles
+#         (use: fine_tune_charge_transfer ChargDistr)
 # alpha, a, b are obtained by partical swarm optimizaiton(PSO)
 fine_tune_charge_transfer False
-#fine_tune_charge_transfer True
+#fine_tune_charge_transfer Tot
+#fine_tune_charge_transfer ChargDistr
 
-# only if fine_tune_charge_transfer == True:
+# only if fine_tune_charge_transfer != False:
 # set the number of PSO running
 # set the number of processes( if processes > 1, then pso is paralleled)
-number_of_pso_CT 2
+number_of_pso_CT 20
 number_of_processes_CT 4
 
-# only if fine_tune_charge_transfer == True:
+# only if fine_tune_charge_transfer != False:
 # charges of isolated atoms:
 #   -> original FF parameters can be used
 #      (use: fine_tune_isolated_charges False)
@@ -232,6 +235,18 @@ fine_tune_isolated_charges False
 #fine_tune_isolated_charges Hirshfeld
 #fine_tune_isolated_charges ESP
 #fine_tune_isolated_charges RESP
+
+# only if fine_tune_charge_transfer == ChargDistr:
+# charges distribution of fhiaims:
+#   -> Hirshfeld charges
+#      (use: fine_tune_isolated_charges Hirshfeld)
+#   OR ESP charges
+#      (use: fine_tune_isolated_charges ESP) 
+#   OR RESP charges
+#      (use: fine_tune_isolated_charges RESP)
+#fine_tune_charges_distribution Hirshfeld
+#fine_tune_charges_distribution ESP
+fine_tune_charges_distribution RESP
 
 # Polarization terms are of form -0.5 * Alpha * E * E0 :
 # Alpha = polarizability of atoms
@@ -255,5 +270,5 @@ fine_tune_polarizabilities False
 # only if fine_tune_polarizabilities == True:
 # set the number of PSO running
 # set the number of processes( if processes > 1, then pso is paralleled)
-number_of_pso_POL 2
+number_of_pso_POL 1
 number_of_processes_POL 4
