@@ -133,17 +133,16 @@ def main():
 	# get information for all logfiles
 	global listofdicts_logfiles___n_atom__xyz
 	global index__listofdicts_logfiles___n_atom__xyz
+	global logfiles__n_atom__xyz
 	global logfile__n_atom__free_atom_volume
 	global logfile__n_atom__hirshfeld_volume
 	global logfile__n_atom__charges
 	listofdicts_logfiles___n_atom__xyz, \
 	 index__listofdicts_logfiles___n_atom__xyz, \
+	 logfiles__n_atom__xyz, \
 	 logfile__n_atom__free_atom_volume, \
 	 logfile__n_atom__hirshfeld_volume, \
 	 logfile__n_atom__charges = get_logfiles_info()
-	
-	# polarizibility from FHI-aims
-	#origFF___type__averageAlpha0eff, origFF___n_atom__alpha0eff = get_alpha0eff()
 	
 	# fine-tune r0 (or not)
 	if dict_keywords['fine_tune_r0'] == True:
@@ -163,7 +162,7 @@ def main():
 			newFF___type__charge = copy.deepcopy(origFF___type__charge)
 		elif ( dict_keywords['fine_tune_charge'] == 'Hirshfeld' ) or ( dict_keywords['fine_tune_charge'] == 'ESP') or ( dict_keywords['fine_tune_charge'] == 'RESP') :
 			newFF___type__charge = get_average_charge()
-	elif ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ):
+	elif ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' ):
 		newFF___type__charge = get_type__isolated_charge(origFF___type__charge)
 	
 	# get pair-wise charge parameters (new FF) for Coulomb interactions, No charge transfer
@@ -232,19 +231,26 @@ def main():
 	#default fudge factor of Coulomb interaction
 	f14 = 0.5 # default
 	f15 = 1.0 # default
-
-	# fine-tune charge_transfer or polarizabilities with pso
-	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_polarizabilities'] == True):
+    
+    # fine-tune charge_transfer or polarizabilities with pso
+	if (dict_keywords['fine_tune_charge_transfer'] == 'ESP'):
+		global logfile__atom_xyz_bohr
+		global logfile__esp_xyz
+		logfile__atom_xyz_bohr, \
+		 logfile__esp_xyz = get_logfiles_ESP()
+	
+	# if pso is used, write the output files seperatly.
+	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO') or ( dict_keywords['fine_tune_polarizabilities'] == True):
 		index__Energies_DFT = get_index__fhiaims_energies()
 		
-		if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ):
+		if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO'):
 			looping_number = dict_keywords['number_of_pso_CT']
 		elif dict_keywords['fine_tune_polarizabilities'] == True:
 			looping_number = dict_keywords['number_of_pso_POL']
 			
 		for i in range(looping_number):
 			# fine-tune charge_transfer, total energies of fhiaims
-			if dict_keywords['fine_tune_charge_transfer'] == 'Tot':
+			if (dict_keywords['fine_tune_charge_transfer'] == 'Tot') or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO'):
 				processes_num = dict_keywords['number_of_processes_CT']
 				newFF___CN_factor, \
 				newFF___type__zero_transfer_distance, \
@@ -269,17 +275,17 @@ def main():
 									index__Energies_DFT, \
 									processes_num)
 									
-			# fine-tune charge_transfer, charge distribution
-			elif dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr':
-				processes_num = dict_keywords['number_of_processes_CT']
-				newFF___CN_factor, \
-				newFF___type__zero_transfer_distance, \
-				newFF___type__ChargeTransfer_parameters, \
-				fopt, \
-				f_list, \
-				x_list = get_ChargTran_CharDistr_pso(newFF___type__charge, \
-													  processes_num)
-
+			## fine-tune charge_transfer, charge distribution
+			#elif dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr':
+			#	processes_num = dict_keywords['number_of_processes_CT']
+			#	newFF___CN_factor, \
+			#	newFF___type__zero_transfer_distance, \
+			#	newFF___type__ChargeTransfer_parameters, \
+			#	fopt, \
+			#	f_list, \
+			#	x_list = get_ChargTran_CharDistr_pso(newFF___type__charge, \
+			#										  processes_num)
+    
 			# fine-tune polarizabilities												  
 			elif dict_keywords['fine_tune_polarizabilities'] == True:
 				processes_num = dict_keywords['number_of_processes_POL']
@@ -360,7 +366,12 @@ def main():
 			print("Goodbye!"  )
 			print("========\n")
 	else:
-													  
+		# fine-tune charge_transfer with ridge regression or lasso
+		if ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' ) and ( dict_keywords['ChargeTransferESPMethod'] == 'Ridge' or dict_keywords['ChargeTransferESPMethod'] == 'Lasso' ): 
+			newFF___CN_factor, \
+			 newFF___type__zero_transfer_distance, \
+			 newFF___type__ChargeTransfer_parameters, \
+			 fopt = do_regression_chartran_esp(newFF___type__charge)
 		########################################################################################
 		# now we start to collect (and/or calculate) all kinds of energies (total energies,    #
 		#   force field energy terms, energy contributions, etc.) for all FHI-aims logfiles    #
@@ -802,20 +813,35 @@ def get_input():
 		dict_keywords['fine_tune_charge_transfer'] = 'Tot'
 	elif astring in ['ChargDistr', 'chargdistr']:
 		dict_keywords['fine_tune_charge_transfer'] = 'ChargDistr'
+	elif astring in ['ESP', 'esp']:
+		dict_keywords['fine_tune_charge_transfer'] = 'ESP'
 	elif astring in ['False', 'false']:
 		dict_keywords['fine_tune_charge_transfer'] = False
 	else:
 		sys.exit('== Error: keyword \'fine_tune_charge_transfer\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
 		
-	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ):
+	if ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' ):
+		astring = get_input_loop_lines(lines, 'ChargeTransferESPMethod')
+		if astring in ['PSO', 'pso']:
+			dict_keywords['ChargeTransferESPMethod'] = 'PSO'
+		elif astring in ['Ridge', 'ridge']:
+			dict_keywords['ChargeTransferESPMethod'] = 'Ridge'
+		elif astring in ['Lasso', 'Lasso']:
+			dict_keywords['ChargeTransferESPMethod'] = 'Lasso'
+			
+		if ( dict_keywords['ChargeTransferESPMethod'] == 'Ridge' ) or ( dict_keywords['ChargeTransferESPMethod'] == 'Lasso' ):
+			astring = get_input_loop_lines(lines, 'regularization_parameter_CharTran')
+			dict_keywords['regularization_parameter_CharTran'] = float(astring)
+		
+	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO'):
 		astring = get_input_loop_lines(lines, 'number_of_pso_CT')
 		dict_keywords['number_of_pso_CT'] = int(astring)
 			
-	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ):
+	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO'):
 		astring = get_input_loop_lines(lines, 'number_of_processes_CT')
 		dict_keywords['number_of_processes_CT'] = int(astring)
 			
-	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ):
+	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP'):
 		astring = get_input_loop_lines(lines, 'fine_tune_isolated_charges')
 		if astring in ['False', 'false']:
 			dict_keywords['fine_tune_isolated_charges'] = 'False'
@@ -841,7 +867,7 @@ def get_input():
 	else:
 		dict_keywords['fine_tune_charges_distribution'] = False
 		
-	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ):
+	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO'):
 		astring = get_input_loop_lines(lines, 'fine_tune_starting_points')
 		if astring in ['False', 'false']:
 			dict_keywords['fine_tune_starting_points'] = 'False'
@@ -1391,6 +1417,7 @@ def get_logfiles_info():
 
 	listofdicts_logfiles___n_atom__xyz = []
 	index__listofdicts_logfiles___n_atom__xyz = {}
+	logfiles__n_atom__xyz = {}
 	
 	logfile__n_atom__free_atom_volume = {}
 	logfile__n_atom__hirshfeld_volume = {}
@@ -1403,6 +1430,7 @@ def get_logfiles_info():
 		
 		index = logfile.rsplit('/', 2)[1]
 		index__listofdicts_logfiles___n_atom__xyz[index] = n_atom__xyz
+		logfiles__n_atom__xyz[logfile] = n_atom__xyz
 		
 		logfile__n_atom__free_atom_volume[logfile] = n_atom__free_atom_volume
 		logfile__n_atom__hirshfeld_volume[logfile] = n_atom__hirshfeld_volume
@@ -1411,9 +1439,368 @@ def get_logfiles_info():
 	
 	return(listofdicts_logfiles___n_atom__xyz, \
 	        index__listofdicts_logfiles___n_atom__xyz, \
+	        logfiles__n_atom__xyz, \
 	        logfile__n_atom__free_atom_volume, \
 	        logfile__n_atom__hirshfeld_volume, \
 	        logfile__n_atom__charges)
+
+############################################################
+# get ESP from fhiaims cube file
+############################################################
+def get_fhiaims_ESP(logfile):
+	path = logfile.rsplit('/', 1)[0]
+	
+	# unzip potential_esp_1.cube.bz2
+	#if os.path.exists(os.path.join(path, 'potential_esp_1.cube.bz2')):
+	#	os.system('bunzip2 {:s}'.format(os.path.join(path, 'potential_esp_1.cube.bz2')))
+		
+	# read file
+	in_file = open(os.path.join( path, 'potential_esp_1.cube'), 'r')
+	file_lines = in_file.readlines()
+	lines = list(file_lines)
+	in_file.close()
+	
+	xyz = []
+	lines_position = lines.index(' *****************************\n')
+	for line in lines[lines_position+5:lines_position+5+n_atoms]:
+		stringa, x, y, z = line.rsplit(None, 3)
+		xyz.append([float(x), float(y), float(z)])
+	
+	# esp : hartree, xyz: bohr	
+	esp_xyz = []
+	n_esp = 0	
+	for line in lines[lines_position+5+n_atoms:]:
+		esp_found = re.match(r'(\s*(.?\d+\.\d+\w.?\d+)\s*(.?\d+\.\d+)\s*(.?\d+\.\d+)\s*(.?\d+\.\d+))', line)
+		if esp_found:
+			potential, x, y, z = line.split(None, 3)
+			if not(float(potential) == 0 and float(x) == 0 and float(z) == 0):
+				esp_xyz.append([float(potential) * (-1), float(x), float(y), float(z)])
+				n_esp+=1
+				
+	esp_xyz_reduced = []
+	
+	a = 0
+	esp_xyz_reduced.append(esp_xyz[0])
+	while a < n_esp-100:
+		a += 100
+		esp_xyz_reduced.append(esp_xyz[a])
+				
+	#os.system('bzip2 {:s}'.format(os.path.join(path, 'potential_esp_1.cube')))
+	return(xyz, esp_xyz_reduced)
+	
+############################################################
+# get ESP from logfiles
+############################################################
+def get_logfiles_ESP():
+	
+	logfile__atom_xyz_bohr = {}
+	logfile__esp_xyz = {}
+	for logfile in list_logfiles:
+		xyz, esp_xyz = get_fhiaims_ESP(logfile)
+		logfile__atom_xyz_bohr[logfile] = xyz
+		logfile__esp_xyz[logfile] = esp_xyz
+	
+	return(logfile__atom_xyz_bohr, \
+			logfile__esp_xyz)
+
+################################################################
+# get ESP = (sum(qj / rij))
+################################################################
+
+def get_fhiaims_ESP_fit(logfile, pairs__distances, type__charge, CN_factor, type__zero_transfer_distance, type__ChargeTransfer_parameters):
+	
+	xyz = logfile__atom_xyz_bohr[logfile]
+	esp_xyz = logfile__esp_xyz[logfile]
+	
+	# ion_index, polar_index, n_atom__charge
+	polar_index = []
+	n_atom__charge = {}
+	
+	for i in range(n_atoms):
+		n_atom__charge[i] = type__charge[ n_atom__type[i] ]
+		if class__element[n_atom__class[i]] == 'Zn' or class__element[n_atom__class[i]] == 'Na':
+			ion_index = i
+		elif class__element[n_atom__class[i]] == 'S' or class__element[n_atom__class[i]] == 'O' or class__element[n_atom__class[i]] == 'N':
+			polar_index.append(i)
+	
+	cation_pairs = []		
+	for i in polar_index:
+		if i < ion_index:
+			cation_pairs.append((i, ion_index))
+		else:
+			cation_pairs.append((ion_index, i))
+	
+	# get new n_atom__charge (with charge transfer)
+	# get CN
+	if type__ChargeTransfer_parameters:
+		CN = get_CN(pairs__distances, cation_pairs, type__zero_transfer_distance)
+		
+		total_transq = 0	
+		for pair in cation_pairs:
+			if n_atom__type[pair[0]] in type__ChargeTransfer_parameters.keys():
+				if pairs__distances[pair] <= type__zero_transfer_distance[n_atom__type[pair[0]]]:
+					if (CN_factor == 0):
+						transq = type__ChargeTransfer_parameters[n_atom__type[pair[0]]][0] * pairs__distances[pair] + type__ChargeTransfer_parameters[n_atom__type[pair[0]]][1]
+					else:
+						transq = ( type__ChargeTransfer_parameters[n_atom__type[pair[0]]][0] * pairs__distances[pair] + type__ChargeTransfer_parameters[n_atom__type[pair[0]]][1] ) / math.pow( CN, 1.0/float(CN_factor) ) 
+					total_transq += transq
+					n_atom__charge[pair[0]] += transq
+			elif n_atom__type[pair[1]] in type__ChargeTransfer_parameters.keys():
+				if pairs__distances[pair] <= type__zero_transfer_distance[n_atom__type[pair[1]]]:
+					if (CN_factor == 0):
+						transq = type__ChargeTransfer_parameters[n_atom__type[pair[1]]][0] * pairs__distances[pair] + type__ChargeTransfer_parameters[n_atom__type[pair[1]]][1]
+					else:
+						transq = ( type__ChargeTransfer_parameters[n_atom__type[pair[1]]][0] * pairs__distances[pair] + type__ChargeTransfer_parameters[n_atom__type[pair[1]]][1] ) / math.pow( CN, 1.0/float(CN_factor) ) 
+					total_transq += transq
+					n_atom__charge[pair[1]] += transq
+		
+		n_atom__charge[ion_index] = n_atom__charge[ion_index] - total_transq
+	
+	# get esp_fhiaims_fit
+	#esp_fit = []
+	esp_fhiaims_fit = []
+	for i in esp_xyz:
+		# E = sum(qj / rij)
+		V_fit = 0
+		for j in range(len(xyz)):
+			rij = math.sqrt( ( xyz[j][0] - i[1] ) **2 + ( xyz[j][1] - i[2] ) **2 + ( xyz[j][2] - i[3] ) **2 )
+			V_fit +=  n_atom__charge[j] / rij
+		#esp_fit.append(V_fit)
+		esp_fhiaims_fit.append( i[0], V_fit)
+	
+	# get esp_fhiaims_fit
+	#esp_fhiaims_fit = []
+	#for i in range(len(esp_fit)):
+	#	esp_fhiaims_fit.append( [esp_xyz[i][0], esp_fit[i]] )
+	
+	# RMS
+	#sum_square = 0
+	#for i in range(len(esp_fit)):
+	#	sum_square += ( esp_fit[i] - esp_xyz[i][0] ) **2
+	#RMS = math.sqrt( sum_square / len(esp_fit) )
+	
+	return(esp_fhiaims_fit)
+
+################################################################
+# get MAE of ESP from logfiles and calculation (sum(qj / rij))
+################################################################
+
+def get_MAE_ESP(type__charge, CN_factor, type__zero_transfer_distance, type__ChargeTransfer_parameters):
+	
+	esp_logfiles = []
+	esp_fit = []
+	for logfile, n_atom__xyz in logfiles__n_atom__xyz.items():
+		
+		# get distances between any two atoms
+		pairs__distances = get_distances(n_atom__xyz)
+		
+		esp_fhiaims_fit = get_fhiaims_ESP_fit(logfile, pairs__distances, type__charge, CN_factor, type__zero_transfer_distance, type__ChargeTransfer_parameters)
+		
+		for i in esp_fhiaims_fit:
+			esp_logfiles.append(i[0])
+			esp_fit.append(i[1])
+			
+	# get MAE
+	MAE = numpy.sum(abs(x-y) for x,y in zip(esp_logfiles,esp_fit))/len(esp_logfiles)
+	#print(MAE)
+	return(MAE)
+	
+################################################################
+# get (ESP_fit - ESP_fhiaims) / (CN)sqrt(1/ CN_factor) of one logfile
+################################################################
+
+def get_logfile_target_ESP_reg(logfile, type__charge, pairs__distances, n_atom__R0free, CN_factor):
+	
+	# get esp = sum(qj/rij), without charge transfer, hartree, bohr
+	xyz = logfile__atom_xyz_bohr[logfile]
+	esp_xyz = logfile__esp_xyz[logfile]
+	
+	# ion_index, polar_index, n_atom__charge
+	polar_index = []
+	n_atom__charge = {}
+	type__polar = []
+	
+	for i in range(n_atoms):
+		n_atom__charge[i] = type__charge[ n_atom__type[i] ]
+		if class__element[n_atom__class[i]] == 'Zn' or class__element[n_atom__class[i]] == 'Na':
+			ion_index = i
+		elif class__element[n_atom__class[i]] == 'S' or class__element[n_atom__class[i]] == 'O' or class__element[n_atom__class[i]] == 'N':
+			polar_index.append(i)
+			type__polar.append(n_atom__type[i])
+	
+	type__polar = list(set(type__polar))
+	type__polar.sort()
+	
+	cation_pairs = []		
+	for i in polar_index:
+		if i < ion_index:
+			cation_pairs.append((i, ion_index))
+		else:
+			cation_pairs.append((ion_index, i))
+	
+	# get the sum of vdw radius of polar atom and ion, angstrom
+	type__rvdw_sum = {}
+	pair__rvdw_sum = {}
+	for i in polar_index:
+		type__rvdw_sum[ n_atom__type[i] ] = n_atom__R0free[ i ] + n_atom__R0free[ ion_index ]
+	for pair in cation_pairs:
+		pair__rvdw_sum[ pair ] = n_atom__R0free[ pair[0] ] + n_atom__R0free[ pair[1] ]
+	
+	# get CN 
+	CN = get_CN(pairs__distances, cation_pairs, type__rvdw_sum)
+	
+	# get y = ( ESP_DFT - ESP_fit ) / math.pow( CN, 1.0/float(CN_factor) ) of each point
+	logfile__chartran_reg_y = []
+	logfile__chartran_reg_x = {}
+	for tp in type__polar:
+		logfile__chartran_reg_x[tp] = []
+		
+	for i in esp_xyz:
+		# E = sum(qj / rij)
+		V_fit = 0
+		for j in range(len(xyz)):
+			rij = math.sqrt( ( xyz[j][0] - i[1] ) **2 + ( xyz[j][1] - i[2] ) **2 + ( xyz[j][2] - i[3] ) **2 )
+			V_fit +=  n_atom__charge[j] / rij
+		y = ( i[0] - V_fit ) / math.pow( CN, 1.0/float(CN_factor) )
+		logfile__chartran_reg_y.append(y)
+		
+		# x = d_pm / d_ip - rvdw_sum_pm / d_ip - d_pm / d_mi + rvdw_sum_pm / d_mi
+		atom__x = {}
+		for polar in polar_index:
+			if polar < ion_index:
+				pair = (polar, ion_index)
+			else:
+				pair = (ion_index, polar)
+				
+			d_pm = pairs__distances[ pair ] * 18.897259886   # nm -> bohr
+			rvdw_sum_pm = pair__rvdw_sum[ pair ] * 1.8897259886  # angstrom -> bohr
+			
+			d_ip = math.sqrt( ( xyz[polar][0] - i[1] ) **2 + ( xyz[polar][1] - i[2] ) **2 + ( xyz[polar][2] - i[3] ) **2 )
+			d_mi = math.sqrt( ( xyz[ion_index][0] - i[1] ) **2 + ( xyz[ion_index][1] - i[2] ) **2 + ( xyz[ion_index][2] - i[3] ) **2 )
+			
+			x = d_pm / d_ip - rvdw_sum_pm / d_ip - d_pm / d_mi + rvdw_sum_pm / d_mi
+			
+			atom__x [polar] = x
+			
+		for tp in type__polar:
+			value = 0.
+			for key in atom__x.keys():
+				if n_atom__type[ key ] == tp:
+					value += atom__x[ key ]
+			logfile__chartran_reg_x[ tp ].append( value )
+	
+	return(logfile__chartran_reg_y, logfile__chartran_reg_x)
+	
+################################################################
+# get (ESP_fit - ESP_fhiaims) / (CN)sqrt(1/ CN_factor) of fhiaims
+################################################################
+def get_fhiaims_target_ESP_reg(type__charge):
+	
+	data_ESP = pandas.DataFrame()
+	
+	# get free vdw radius of atom, angstrom
+	n_atom__R0free = get_R0free()
+	
+	CN_factor = 1000000000000
+	
+	listofdicts_logfiles_chartran_reg_y = []
+	listofdicts_logfiles_chartran_reg_x = []
+	for logfile, n_atom__xyz in logfiles__n_atom__xyz.items():
+		
+		# get distances between any two atoms, nm
+		pairs__distances = get_distances(n_atom__xyz)
+		
+		logfile__chartran_reg_y, logfile__chartran_reg_x = get_logfile_target_ESP_reg(logfile, type__charge, pairs__distances, n_atom__R0free, CN_factor)
+		
+		for y in logfile__chartran_reg_y:
+			listofdicts_logfiles_chartran_reg_y.append(y * (-1))   # y * -1
+		listofdicts_logfiles_chartran_reg_x.append(logfile__chartran_reg_x)
+		
+	data_ESP['esp_regression_target' ] = listofdicts_logfiles_chartran_reg_y
+		
+	sortedlist_type = []
+	
+	for tp in listofdicts_logfiles_chartran_reg_x[0]:
+		sortedlist_type.append( tp )	
+	sortedlist_type = sorted(sortedlist_type)
+	
+	for tp in sortedlist_type:
+	
+		list_type_contribs = []
+	
+		for logfile__chartran_reg_x in listofdicts_logfiles_chartran_reg_x:
+			for x in logfile__chartran_reg_x[ tp ]:
+				list_type_contribs.append( x )
+	
+		data_ESP['esp_regression_contribs_type_'+str(tp)] = list_type_contribs
+		
+	return(data_ESP)
+	
+###############################################################################
+# do regression for esp to estimate charge transfer parameters
+###############################################################################
+
+def do_regression_chartran_esp(type__charge):
+
+	predictors = []
+	
+	data_ESP = get_fhiaims_target_ESP_reg(type__charge)
+	
+	for colname in data_ESP:
+		if ( 'contribs' in colname ) and ( 'type' in colname ):
+			predictors.append( colname )
+	if dict_keywords['ChargeTransferESPMethod'] == 'Ridge':
+		reg = Ridge(alpha=dict_keywords['regularization_parameter_CharTran'], fit_intercept=True, normalize=False)
+	elif dict_keywords['ChargeTransferESPMethod'] == 'Lasso':
+		reg = Lasso(alpha=dict_keywords['regularization_parameter_CharTran'], fit_intercept=True, normalize=False, positive=True)
+	
+	reg.fit(data_ESP[predictors], data_ESP[ 'esp_regression_target' ])
+	
+	# get some infos
+	#if True:
+	#	y_pred = reg.predict(data_ESP[predictors])
+	#	rss = sum( (y_pred-data_ESP['esp_regression_target'])**2. )
+	#	print('RSS = ', rss)
+	#	#print('\n====\n')
+	#	print('intercept = ', reg.intercept_)
+		
+		#for i in range(len(reg.coef_)):
+		#    print(predictors[i], reg.coef_[i])
+	
+	# get MAE
+	y_pred = reg.predict(data_ESP[predictors])
+	MAE = numpy.sum(abs(x-y) for x,y in zip(y_pred,data_ESP['esp_regression_target']))/len(y_pred)
+	
+	# get list of (already sorted) type from DataFrame
+	sortedlist_type = []
+	for colname in data_ESP:
+		if ( 'contribs' in colname ) and ( 'type' in colname ):
+			string_type = re.findall('[0-9]+',colname)
+			tp = string_type[0]
+			sortedlist_type.append( tp )
+	
+	# get free vdw radius of atom, angstrom
+	n_atom__R0free = get_R0free()
+	type__R0free = {}
+	for i in range(n_atoms):
+		type__R0free[ n_atom__type[i] ] = n_atom__R0free[i]
+		if class__element[n_atom__class[i]] == 'Zn' or class__element[n_atom__class[i]] == 'Na':
+			ion_type = n_atom__type[i]
+	
+	new___CN_factor = 1000000000000
+	new___type__zero_transfer_distance = {}
+	new___type__ChargeTransfer_parameters = {}
+	for i in range(len(sortedlist_type)):
+		
+		r = (type__R0free[ sortedlist_type[i] ] + type__R0free[ ion_type ]) * 0.1 # angstrom -> nm
+		
+		new___type__zero_transfer_distance[ sortedlist_type[i] ] = r
+		
+		a = reg.coef_[i] * (-1) * 18.8972598858 # hatree, 1/bohr -> 1/nm
+		b = -1 * a * r
+		new___type__ChargeTransfer_parameters[ sortedlist_type[i] ] = [a, b]
+		
+	return(new___CN_factor, new___type__zero_transfer_distance, new___type__ChargeTransfer_parameters, MAE)
 
 ############################################################
 # get pair-wise charge parameters for Coulomb interactions
@@ -1871,7 +2258,7 @@ def get_Coulomb_energy(pairs__distances, pairs__charge, type__charge, CN_factor,
 	return(Ecoul)
 
 #########################################################################
-# connvert amber combination rule of vdW pair-wise parameters to OPLS-AA
+# convert amber combination rule of vdW pair-wise parameters to OPLS-AA
 #########################################################################
 
 def OPLS_LJ(system):
@@ -3888,7 +4275,7 @@ def get_type__isolated_charge(type_charge):
 ##############################################################################################
 
 # the target function that to be minimized
-def PSO_objective_ChargTrans(x, *args):
+def PSO_objective_ChargTrans_Tot(x, *args):
 	
 	type__polar = []
 		
@@ -4005,24 +4392,32 @@ def PSO_optimize(classpair__Kb, \
 		
 		type__ChargeTransfer_parameters[i] = [slope, offset]
 	
+	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ):
+		args = (classpair__Kb, \
+				classpair__r0, \
+				classtriple__Ktheta, \
+				classtriple__theta0, \
+				classquadruple__V1, \
+				classquadruple__V2, \
+				classquadruple__V3, \
+				classquadruple__V4, \
+				classquadruple__impV2, \
+				pairs__sigma, \
+				pairs__epsilon, \
+				pairs__charge, \
+				type__charge, \
+				type__averageAlpha0eff, \
+				gamma, \
+				index__Energies_DFT)
+		objective = PSO_objective_ChargTrans_Tot
 		
-	args = (classpair__Kb, \
-			 classpair__r0, \
-			 classtriple__Ktheta, \
-			 classtriple__theta0, \
-			 classquadruple__V1, \
-			 classquadruple__V2, \
-			 classquadruple__V3, \
-			 classquadruple__V4, \
-			 classquadruple__impV2, \
-			 pairs__sigma, \
-			 pairs__epsilon, \
-			 pairs__charge, \
-			 type__charge, \
-			 type__averageAlpha0eff, \
-			 gamma, \
-			 index__Energies_DFT)
-	
+	elif ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ):		 
+		args = (type__charge, [])
+		objective = PSO_objective_ChargTran_ChargDistr
+	elif ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO'):
+		args = (type__charge, [])
+		objective = PSO_objective_ChargTran_ESP
+		
 	# Define the lower and upper bounds respectively
 	lb = []
 	ub = []
@@ -4050,7 +4445,7 @@ def PSO_optimize(classpair__Kb, \
 
 		initial = d.values
 	
-	xopt, fopt, f_list, x_list = pso(PSO_objective_ChargTrans, lb, ub, swarmsize = 40, maxiter=40,  processes=processes_num, args=args, initial_pos=initial) 
+	xopt, fopt, f_list, x_list = pso(objective, lb, ub, swarmsize = 40, maxiter=40,  processes=processes_num, args=args, initial_pos=initial) 
 	
 	b = -1
 	
@@ -4235,7 +4630,7 @@ def get_MAE_ChargDistr(type__charge, \
 	return(MAE)
 		
 # the target function that to be minimized
-def PSO_objective_ChargDistr(x, *args):
+def PSO_objective_ChargTran_ChargDistr(x, *args):
 	
 	type__polar = []
 		
@@ -4286,15 +4681,93 @@ def PSO_objective_ChargDistr(x, *args):
 	
 	return(MAE)
 
-# do the partical swarm optimization
-def get_ChargTran_CharDistr_pso(type__charge, \
-								 processes_num):
+## do the partical swarm optimization
+#def get_ChargTran_CharDistr_pso(type__charge, \
+#								 processes_num):
+#	
+#	type__polar   = []
+#		
+#	for i in range(n_atoms):
+#		if n_atom__atomic[i] == 8 or n_atom__atomic[i] == 16 or n_atom__atomic[i] == 7: 
+#			type__polar.append(n_atom__type[i])
+#	type__polar = list(set(type__polar))
+#	type__polar.sort()
+#	
+#	type__zero_transfer_distance = {}
+#	type__ChargeTransfer_parameters = {}
+#	for i in type__polar:
+#		type__zero_transfer_distance[i] = 0
+#		
+#		slope = 0
+#		offset = 0
+#		
+#		type__ChargeTransfer_parameters[i] = [slope, offset]
+#	
+#		
+#	args = (type__charge, [])
+#	
+#	# Define the lower and upper bounds respectively
+#	lb = []
+#	ub = []
+#	
+#	# CN_factor
+#	lb.append( 1 )
+#	ub.append( 100 )	
+#		
+#	for key in type__zero_transfer_distance.keys():
+#		lb.append( 0.24 )
+#		ub.append( 0.4 )
+#	
+#	for key in type__ChargeTransfer_parameters.keys():
+#		lb.append( -15 )
+#		ub.append( 0 )
+#	
+#	# Initial points
+#	if dict_keywords['fine_tune_starting_points'] == 'False':
+#		initial = None
+#	else:
+#		initial_file = dict_keywords['fine_tune_starting_points']
+#		
+#		n=os.path.join(os.getcwd(), initial_file)
+#		d=pandas.read_csv(n, sep="\s+", header=None)
+#
+#		initial = d.values
+#	
+#	xopt, fopt, f_list, x_list = pso(PSO_objective_ChargTran_ChargDistr, lb, ub, swarmsize = 40, maxiter=100,  minfunc=1e-16, processes=processes_num, args=args, initial_pos=initial) 
+#	#print(fopt)
+#	b = -1
+#	
+#	b += 1
+#	new___CN_factor = xopt[b]
+#	
+#	new___type__zero_transfer_distance = {}
+#	for key in type__zero_transfer_distance.keys():
+#		
+#		b += 1
+#		new___type__zero_transfer_distance[key] = xopt[b]
+#	
+#	new___type__ChargeTransfer_parameters = {}
+#	for key in type__ChargeTransfer_parameters.keys():
+#		
+#		b += 1
+#		
+#		slope = xopt[b]
+#		offset = -1 * slope * new___type__zero_transfer_distance[key]
+#		new___type__ChargeTransfer_parameters[key] = [ slope, offset ]
+#	
+#	return(new___CN_factor, new___type__zero_transfer_distance, new___type__ChargeTransfer_parameters, fopt, f_list, x_list)
 	
-	type__polar   = []
+##################################################################################
+# get charge transfer parameters with Partical Swarm Optimization. Fitting to ESP
+##################################################################################
+# the target function that to be minimized
+def PSO_objective_ChargTran_ESP(x, *args):
+	type__polar = []
 		
 	for i in range(n_atoms):
 		if n_atom__atomic[i] == 8 or n_atom__atomic[i] == 16 or n_atom__atomic[i] == 7: 
 			type__polar.append(n_atom__type[i])
+	
 	type__polar = list(set(type__polar))
 	type__polar.sort()
 	
@@ -4308,59 +4781,108 @@ def get_ChargTran_CharDistr_pso(type__charge, \
 		
 		type__ChargeTransfer_parameters[i] = [slope, offset]
 	
+	a = -1
 		
-	args = (type__charge, [])
+	a += 1
+	CN_factor = x[a]
 	
-	# Define the lower and upper bounds respectively
-	lb = []
-	ub = []
-	
-	# CN_factor
-	lb.append( 1 )
-	ub.append( 100 )	
-		
-	for key in type__zero_transfer_distance.keys():
-		lb.append( 0.24 )
-		ub.append( 0.4 )
-	
-	for key in type__ChargeTransfer_parameters.keys():
-		lb.append( -15 )
-		ub.append( 0 )
-	
-	# Initial points
-	if dict_keywords['fine_tune_starting_points'] == 'False':
-		initial = None
-	else:
-		initial_file = dict_keywords['fine_tune_starting_points']
-		
-		n=os.path.join(os.getcwd(), initial_file)
-		d=pandas.read_csv(n, sep="\s+", header=None)
-
-		initial = d.values
-	
-	xopt, fopt, f_list, x_list = pso(PSO_objective_ChargDistr, lb, ub, swarmsize = 40, maxiter=100,  minfunc=1e-16, processes=processes_num, args=args, initial_pos=initial) 
-	print(fopt)
-	b = -1
-	
-	b += 1
-	new___CN_factor = xopt[b]
-	
-	new___type__zero_transfer_distance = {}
+	pso_type__zero_transfer_distance = {}
 	for key in type__zero_transfer_distance.keys():
 		
-		b += 1
-		new___type__zero_transfer_distance[key] = xopt[b]
+		a += 1
+		pso_type__zero_transfer_distance[key] = x[a]
 	
-	new___type__ChargeTransfer_parameters = {}
+	pso_type__ChargeTransfer_parameters = {}
 	for key in type__ChargeTransfer_parameters.keys():
+		a += 1
 		
-		b += 1
-		
-		slope = xopt[b]
-		offset = -1 * slope * new___type__zero_transfer_distance[key]
-		new___type__ChargeTransfer_parameters[key] = [ slope, offset ]
+		slope = x[a]
+		offset = -1 * slope * pso_type__zero_transfer_distance[key]
+		pso_type__ChargeTransfer_parameters[key] = [ slope, offset]
 	
-	return(new___CN_factor, new___type__zero_transfer_distance, new___type__ChargeTransfer_parameters, fopt, f_list, x_list)
+	type__charge, NAN = args
+	
+	MAE = get_MAE_ESP(type__charge, \
+						CN_factor, \
+						pso_type__zero_transfer_distance, \
+						pso_type__ChargeTransfer_parameters)
+	return(MAE)
+	
+## do the partical swarm optimization
+#def get_ChargTran_ESP_pso(type__charge, \
+#							processes_num):
+#								
+#	type__polar = []
+#		
+#	for i in range(n_atoms):
+#		if n_atom__atomic[i] == 8 or n_atom__atomic[i] == 16 or n_atom__atomic[i] == 7: 
+#			type__polar.append(n_atom__type[i])
+#	type__polar = list(set(type__polar))
+#	type__polar.sort()
+#	
+#	type__zero_transfer_distance = {}
+#	type__ChargeTransfer_parameters = {}
+#	for i in type__polar:
+#		type__zero_transfer_distance[i] = 0
+#		
+#		slope = 0
+#		offset = 0
+#		
+#		type__ChargeTransfer_parameters[i] = [slope, offset]
+#	
+#		
+#	args = (type__charge, [])
+#	
+#	# Define the lower and upper bounds respectively
+#	lb = []
+#	ub = []
+#	
+#	# CN_factor
+#	lb.append( 1 )
+#	ub.append( 100 )	
+#		
+#	for key in type__zero_transfer_distance.keys():
+#		lb.append( 0.24 )
+#		ub.append( 0.4 )
+#	
+#	for key in type__ChargeTransfer_parameters.keys():
+#		lb.append( -15 )
+#		ub.append( 0 )
+#	
+#	# Initial points
+#	if dict_keywords['fine_tune_starting_points'] == 'False':
+#		initial = None
+#	else:
+#		initial_file = dict_keywords['fine_tune_starting_points']
+#		
+#		n=os.path.join(os.getcwd(), initial_file)
+#		d=pandas.read_csv(n, sep="\s+", header=None)
+#
+#		initial = d.values
+#	
+#	xopt, fopt, f_list, x_list = pso(PSO_objective_ChargTran_ESP, lb, ub, swarmsize = 40, maxiter=100,  minfunc=1e-16, processes=processes_num, args=args, initial_pos=initial) 
+#	#print(fopt)
+#	b = -1
+#	
+#	b += 1
+#	new___CN_factor = xopt[b]
+#	
+#	new___type__zero_transfer_distance = {}
+#	for key in type__zero_transfer_distance.keys():
+#		
+#		b += 1
+#		new___type__zero_transfer_distance[key] = xopt[b]
+#	
+#	new___type__ChargeTransfer_parameters = {}
+#	for key in type__ChargeTransfer_parameters.keys():
+#		
+#		b += 1
+#		
+#		slope = xopt[b]
+#		offset = -1 * slope * new___type__zero_transfer_distance[key]
+#		new___type__ChargeTransfer_parameters[key] = [ slope, offset ]
+#	
+#	return(new___CN_factor, new___type__zero_transfer_distance, new___type__ChargeTransfer_parameters, fopt, f_list, x_list)
 	
 ############################################################
 # get atomic polarizabilities with Partical Swarm Optimization
@@ -4473,7 +4995,7 @@ def get_polarizabilities_PSO(classpair__Kb, \
 	ub.append( 1.2 )
 	
 			
-	xopt, fopt, f_list, x_list = pso(PSO_objective_polarizabilities, lb, ub, swarmsize = 40, maxiter=10000, processes=processes_num, args=args)
+	xopt, fopt, f_list, x_list = pso(PSO_objective_polarizabilities, lb, ub, swarmsize = 40, maxiter=50, processes=processes_num, args=args)
 	
 	b = -1
 	
@@ -5250,6 +5772,17 @@ def print_charge_transfer_params(CN_factor, \
 	elif dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr':
 		print('>>> Charge transfer have been assigned using partical swarm optimization from charges distribution.')
 		printf('  >> Mean absolute error from PSO: %6f\n', float(fopt))
+	elif dict_keywords['fine_tune_charge_transfer'] == 'ESP':
+		if dict_keywords['ChargeTransferESPMethod'] == 'PSO':
+			print('>>> Charge transfer have been assigned using partical swarm optimization from electrostatic potential.')
+			printf('  >> Mean absolute error from PSO: %6f\n', float(fopt))
+		elif dict_keywords['ChargeTransferESPMethod'] == 'Ridge':
+			print('>>> Charge transfer have been assigned using Ridge regression from electrostatic potential.')
+			printf('  >> Mean absolute error from PSO: %6f\n', float(fopt))
+		elif dict_keywords['ChargeTransferESPMethod'] == 'Lasso':
+			print('>>> Charge transfer have been assigned using Lasso regression from electrostatic potential.')
+			printf('  >> Mean absolute error from PSO: %6f\n', float(fopt))
+	
 	
 	if ( CN_factor != 'No_Charge_transfer' ) and ( CN_factor != 0 ):
 		printf('>> Coordination number factor of cation: %4f\n', float(CN_factor))

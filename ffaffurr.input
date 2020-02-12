@@ -68,7 +68,7 @@ Regression_torsionalV_Method Ridge
 
 # only if fine_tune_torsionalV == Regression AND Regression_torsionalV_Method == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_torsionalV 0.000700
+regularization_parameter_torsionalV 30.0
 
 # improper torsion terms are of form:
 #       V2imp  * ( 1+cos(2*θ − θ0) )
@@ -91,7 +91,7 @@ Regression_imptorsionalV_Method Ridge
 
 # only if fine_tune_imptorsionalV == Regression AND Regression_imptorsionalV_Method == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_imptorsionalV 30.0
+regularization_parameter_imptorsionalV 17
 
 # van der Waals (vdW; Lennard-Jones) terms are of form:
 #       4*epsilon * f * [ (sigma/r)**12 - (sigma/r)**6 ]
@@ -214,14 +214,27 @@ fine_tune_only_f14 False
 fine_tune_charge_transfer False
 #fine_tune_charge_transfer Tot
 #fine_tune_charge_transfer ChargDistr
+#fine_tune_charge_transfer ESP
 
-# only if fine_tune_charge_transfer != False:
+# only if fine_tune_charge_transfer == ESP:
+#   use PSO
+#   OR Ridge regression
+#   OR Lasso regression
+#ChargeTransferESPMethod PSO
+#ChargeTransferESPMethod Ridge
+ChargeTransferESPMethod Lasso
+
+# only if ChargeTransferESPMethod == {Ridge/Lasso}:
+# set regularization parameter
+regularization_parameter_CharTran 30.0
+
+# only if fine_tune_charge_transfer == Tot/ChargDistr OR ChargeTransferESPMethod == PSO:
 # set the number of PSO running
 # set the number of processes( if processes > 1, then pso is paralleled)
-number_of_pso_CT 20
+number_of_pso_CT 1
 number_of_processes_CT 4
 
-# only if fine_tune_charge_transfer != False:
+# only if fine_tune_charge_transfer == Tot/ChargDistr OR ChargeTransferESPMethod == PSO:
 # charges of isolated atoms:
 #   -> original FF parameters can be used
 #      (use: fine_tune_isolated_charges False)
@@ -248,7 +261,7 @@ fine_tune_isolated_charges False
 #fine_tune_charges_distribution ESP
 fine_tune_charges_distribution RESP
 
-# only if fine_tune_charge_transfer == ChargDistr OR fine_tune_charge_transfer == Tot:
+# only if fine_tune_charge_transfer == Tot/ChargDistr OR ChargeTransferESPMethod == PSO:
 # choose starting points of PSO:
 #   -> generate random points as starting points
 #      (use: fine_tune_starting_points False)
