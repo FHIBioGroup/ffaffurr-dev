@@ -68,7 +68,7 @@ Regression_torsionalV_Method Ridge
 
 # only if fine_tune_torsionalV == Regression AND Regression_torsionalV_Method == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_torsionalV 30.0
+regularization_parameter_torsionalV 0.000426
 
 # improper torsion terms are of form:
 #       V2imp  * ( 1+cos(2*θ − θ0) )
@@ -91,7 +91,7 @@ Regression_imptorsionalV_Method Ridge
 
 # only if fine_tune_imptorsionalV == Regression AND Regression_imptorsionalV_Method == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_imptorsionalV 17
+regularization_parameter_imptorsionalV 0.000426
 
 # van der Waals (vdW; Lennard-Jones) terms are of form:
 #       4*epsilon * f * [ (sigma/r)**12 - (sigma/r)**6 ]
@@ -122,11 +122,11 @@ regularization_parameter_imptorsionalV 17
 #            OR epsilon parameters can be assigned using regression
 #               from total energies of FHI-aims input logfiles
 #               (use: fine_tune_epsilon RegressionTot)
-fine_tune_sigma False
-#fine_tune_sigma TS
-fine_tune_epsilon False
+#fine_tune_sigma False
+fine_tune_sigma TS
+#fine_tune_epsilon False
 #fine_tune_epsilon TS
-#fine_tune_epsilon RegressionTS
+fine_tune_epsilon RegressionTS
 #fine_tune_epsilon RegressionMBD
 #fine_tune_epsilon RegressionTot
 
@@ -140,7 +140,7 @@ RegressionEpsilonMethod Lasso
 
 # only if RegressionEpsilonMethod == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_epsilon 30.0
+regularization_parameter_epsilon 30
 
 # only if fine_tune_epsilon == Regression{TS/MBD/Tot} AND RegressionEpsilonMethod == Lasso:
 #   restrict regression-fitted epsilon parameters to be positive
@@ -208,11 +208,14 @@ fine_tune_only_f14 False
 #         (use: fine_tune_charge_transfer False)
 #      OR fitting charge transfer params to total energies of FHI-aims input logfiles
 #         (use: fine_tune_charge_transfer Tot) 
+#      OR fitting charge transfer params to interaction energies of FHI-aims input logfiles
+#         (use: fine_tune_charge_transfer Inter) 
 #      OR fitting charge transfer params to charge distribution of FHI-aims input logfiles
 #         (use: fine_tune_charge_transfer ChargDistr)
 # alpha, a, b are obtained by partical swarm optimizaiton(PSO)
 fine_tune_charge_transfer False
 #fine_tune_charge_transfer Tot
+#fine_tune_charge_transfer Inter
 #fine_tune_charge_transfer ChargDistr
 #fine_tune_charge_transfer ESP
 
@@ -226,15 +229,15 @@ ChargeTransferESPMethod Lasso
 
 # only if ChargeTransferESPMethod == {Ridge/Lasso}:
 # set regularization parameter
-regularization_parameter_CharTran 30.0
+regularization_parameter_CharTran 0.000657
 
-# only if fine_tune_charge_transfer == Tot/ChargDistr OR ChargeTransferESPMethod == PSO:
+# only if fine_tune_charge_transfer == Tot/Inter/ChargDistr OR ChargeTransferESPMethod == PSO:
 # set the number of PSO running
 # set the number of processes( if processes > 1, then pso is paralleled)
-number_of_pso_CT 1
+number_of_pso_CT 10
 number_of_processes_CT 4
 
-# only if fine_tune_charge_transfer == Tot/ChargDistr OR ChargeTransferESPMethod == PSO:
+# only if fine_tune_charge_transfer == Tot/Inter/ChargDistr OR ChargeTransferESPMethod == PSO:
 # charges of isolated atoms:
 #   -> original FF parameters can be used
 #      (use: fine_tune_isolated_charges False)
@@ -261,7 +264,7 @@ fine_tune_isolated_charges False
 #fine_tune_charges_distribution ESP
 fine_tune_charges_distribution RESP
 
-# only if fine_tune_charge_transfer == Tot/ChargDistr OR ChargeTransferESPMethod == PSO:
+# only if fine_tune_charge_transfer == Tot/Inter/ChargDistr OR ChargeTransferESPMethod == PSO:
 # choose starting points of PSO:
 #   -> generate random points as starting points
 #      (use: fine_tune_starting_points False)
