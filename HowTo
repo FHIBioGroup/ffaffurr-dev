@@ -14,7 +14,7 @@ Finally, the input file ffaffurr.input contains the "switches" that control the 
 
 After "adjusting", we put new parameters into two files: ffaffurr-amber03.xml and CustomForce.xml:
 
-ffaffurr-amber03.xml includes all the parameters except those for vdW interactions. Parameters we got for vdW interactions are pair-wise, Which are atom-wise in standard OPLS-AA FF. So we put those parameters in CustomForce.xml, and then use a function of OpenMM "CustomBondForce" to add the vdW interactions to the energy calculation.
+ffaffurr-oplsaa.xml includes all the parameters in standard OPLS-AA FF.
 
-CustomForce.xml includes the pair-wise vdW parameters(index, index, sigma, epsilon). If we want to add other custom forces, we can also put parameters in this file.
+CustomForce.xml includes charge transfer and polarization parameters.
 
