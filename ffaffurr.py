@@ -145,13 +145,15 @@ def main():
 	 logfile__n_atom__charges = get_logfiles_info()
 	 
 	# get Boltzmann weight
-	#global Boltzmann_weight
-	#index__Energies_DFT = get_index__fhiaims_energies()
-	#Boltzmann_weight = get_Boltzmann_weight(64,index__Energies_DFT)
+	if dict_keywords['boltzmann_weighted_fitting'] == True:
+		global Boltzmann_weight
+		index__Energies_DFT = get_index__fhiaims_energies()
+		RT = dict_keywords['temperature_factor']
+		Boltzmann_weight = get_Boltzmann_weight(RT,index__Energies_DFT)
 	
 	global type__averageR0eff
 	type__averageR0eff = get_R0eff()
-	print(type__averageR0eff)
+	
 	# fine-tune r0 (or not)
 	if dict_keywords['fine_tune_r0'] == True:
 		newFF___classpair__r0 = get_average_r0()
@@ -394,7 +396,8 @@ def main():
 		
 		# get Boltzmann weighted total energies from high-level (DFT; FHI-aims) calculations output
 		# also: get Boltzmann weighted vdW(TS) or MBD energies if requested
-		#get_BW_fhiaims_energies()
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			get_BW_fhiaims_energies()
 		
 		# get bonding energies with newFF parameters
 		# bonding terms are of form: 0.5 * kB * (r-r0)**2
@@ -660,6 +663,18 @@ def get_input():
 		dict_keywords['readparamsfromffaffurr'] = False
 	else:
 		sys.exit('== Error: keyword \'readparamsfromffaffurr\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
+	
+	astring = get_input_loop_lines(lines, 'boltzmann_weighted_fitting')
+	if astring in ['True', 'true']:
+		dict_keywords['boltzmann_weighted_fitting'] = True
+	elif astring in ['False', 'false']:
+		dict_keywords['boltzmann_weighted_fitting'] = False
+	else:
+		sys.exit('== Error: keyword \'boltzmann_weighted_fitting\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
+		
+	if ( dict_keywords['boltzmann_weighted_fitting'] == True ):
+		astring = get_input_loop_lines(lines, 'temperature_factor')
+		dict_keywords['temperature_factor'] = float(astring)
 	
 	astring = get_input_loop_lines(lines, 'fine_tune_r0')
 	if astring in ['True', 'true']:
@@ -2458,22 +2473,29 @@ def get_index__fhiaims_energies():
 # wi= A*exp(-Ei_DFT/(RT))
 ##############################################################
 def get_Boltzmann_weight(RT,index__Energies_DFT):
-	#RT=4
-	
+		
 	DFT_energies=[]
 	for index, value in index__Energies_DFT.items():
-		DFT_energies.append(float(value))
+		DFT_energies.append(float(value)/96.485309 * 23.060542)             #kj/mol > kcal/mol
+	
+	min_ele=min(DFT_energies)
+	
+	rel_DFT_energies=[]
+	for i in DFT_energies:
+		a=i-min_ele
+		rel_DFT_energies.append(a)
 	
 	sum_ex=0
-	for i in DFT_energies:
+	for i in rel_DFT_energies:
 		ex=math.exp(-1*i/RT)
 		sum_ex+=ex
 		
 	w_data=[]
 	A=1/sum_ex
-	for i in DFT_energies:
+	for i in rel_DFT_energies:
 		wi=A*math.exp(-1*i/RT)
 		w_data.append(wi)
+		
 	return(w_data)
 
 ##########################################################
@@ -2548,12 +2570,19 @@ def get_MAE(classpair__Kb, \
 	x_data = numpy.array(x_data)
 	y_data = numpy.array(y_data)
 	
-	#l1-norm
-	B = minimize(fs,numpy.array([0.0]),method='Nelder-Mead')
-	rtmp = x_data[:] - y_data[:] + B.x 
 	
-	MAE = float(fs([B.x])/rtmp.shape[0])
-	#MAE = float(fs_w([B.x])/rtmp.shape[0])
+	#l1-norm
+	if dict_keywords['boltzmann_weighted_fitting'] == True:
+		B = minimize(fs_w,numpy.array([0.0]),method='Nelder-Mead')
+		rtmp = x_data[:] - y_data[:] + B.x 
+	
+		MAE = float(fs_w([B.x])/rtmp.shape[0])
+	else:
+		B = minimize(fs,numpy.array([0.0]),method='Nelder-Mead')
+		rtmp = x_data[:] - y_data[:] + B.x 
+	
+		MAE = float(fs([B.x])/rtmp.shape[0])
+	
 	return(MAE)
 
   
@@ -3828,9 +3857,9 @@ def get_torsionsEnergyContribs(origFF___classquadruple__V1, origFF___classquadru
 	listofdicts_logfiles___classquadruples__torsionsV1EnergyContribs = []
 	listofdicts_logfiles___classquadruples__torsionsV2EnergyContribs = []
 	listofdicts_logfiles___classquadruples__torsionsV3EnergyContribs = []
-	#listofdicts_logfiles___classquadruples__torsionsV1EnergyContribs_BW = []
-	#listofdicts_logfiles___classquadruples__torsionsV2EnergyContribs_BW = []
-	#listofdicts_logfiles___classquadruples__torsionsV3EnergyContribs_BW = []
+	listofdicts_logfiles___classquadruples__torsionsV1EnergyContribs_BW = []
+	listofdicts_logfiles___classquadruples__torsionsV2EnergyContribs_BW = []
+	listofdicts_logfiles___classquadruples__torsionsV3EnergyContribs_BW = []
 	
 	a=-1
 	for n_atom__xyz in listofdicts_logfiles___n_atom__xyz:
@@ -3841,9 +3870,9 @@ def get_torsionsEnergyContribs(origFF___classquadruple__V1, origFF___classquadru
 		classquadruples__torsionsV1EnergyContribs = {}
 		classquadruples__torsionsV2EnergyContribs = {}
 		classquadruples__torsionsV3EnergyContribs = {}
-		#classquadruples__torsionsV1EnergyContribs_BW = {}
-		#classquadruples__torsionsV2EnergyContribs_BW = {}
-		#classquadruples__torsionsV3EnergyContribs_BW = {}
+		classquadruples__torsionsV1EnergyContribs_BW = {}
+		classquadruples__torsionsV2EnergyContribs_BW = {}
+		classquadruples__torsionsV3EnergyContribs_BW = {}
 	
 		for quadruple in list_1234_interacts:
 	
@@ -3867,10 +3896,12 @@ def get_torsionsEnergyContribs(origFF___classquadruple__V1, origFF___classquadru
 						
 					if atuple in classquadruples__torsionsV1EnergyContribs:
 						classquadruples__torsionsV1EnergyContribs[ atuple ] +=  1. + math.cos(  1 * phi - phase ) 
-						#classquadruples__torsionsV1EnergyContribs_BW[ atuple ] +=  1. + math.cos(  1 * phi - phase ) * math.sqrt(Boltzmann_weight[a])
+						if dict_keywords['boltzmann_weighted_fitting'] == True:
+							classquadruples__torsionsV1EnergyContribs_BW[ atuple ] += ( 1. + math.cos(  1 * phi - phase )) * math.sqrt(Boltzmann_weight[a])
 					else:
 						classquadruples__torsionsV1EnergyContribs[ atuple ] =   1. + math.cos(  1 * phi - phase ) 
-						#classquadruples__torsionsV1EnergyContribs_BW[ atuple ] =   1. + math.cos(  1 * phi - phase ) * math.sqrt(Boltzmann_weight[a])
+						if dict_keywords['boltzmann_weighted_fitting'] == True:
+							classquadruples__torsionsV1EnergyContribs_BW[ atuple ] =   (1. + math.cos(  1 * phi - phase )) * math.sqrt(Boltzmann_weight[a])
 				
 				if ( atuple in origFF___classquadruple__V2 ) or ( dict_keywords['RegressionTorsionalVall'] == True ):
 					
@@ -3880,11 +3911,13 @@ def get_torsionsEnergyContribs(origFF___classquadruple__V1, origFF___classquadru
 						phase = 3.14159265359
 					
 					if atuple in classquadruples__torsionsV2EnergyContribs:
-						classquadruples__torsionsV2EnergyContribs[ atuple ] += 1. + math.cos(  2 * phi - phase ) 
-						#classquadruples__torsionsV2EnergyContribs_BW[ atuple ] += 1. + math.cos(  2 * phi - phase ) * math.sqrt(Boltzmann_weight[a])
+						classquadruples__torsionsV2EnergyContribs[ atuple ] += 1. + math.cos(  2 * phi - phase )
+						if dict_keywords['boltzmann_weighted_fitting'] == True: 
+							classquadruples__torsionsV2EnergyContribs_BW[ atuple ] += (1. + math.cos(  2 * phi - phase )) * math.sqrt(Boltzmann_weight[a])
 					else:
 						classquadruples__torsionsV2EnergyContribs[ atuple ] =  1. + math.cos(  2 * phi - phase ) 
-						#classquadruples__torsionsV2EnergyContribs_BW[ atuple ] =  1. + math.cos(  2 * phi - phase ) * math.sqrt(Boltzmann_weight[a])
+						if dict_keywords['boltzmann_weighted_fitting'] == True:
+							classquadruples__torsionsV2EnergyContribs_BW[ atuple ] =  (1. + math.cos(  2 * phi - phase )) * math.sqrt(Boltzmann_weight[a])
 						
 				
 				if ( atuple in origFF___classquadruple__V3 ) or ( dict_keywords['RegressionTorsionalVall'] == True ):
@@ -3896,17 +3929,20 @@ def get_torsionsEnergyContribs(origFF___classquadruple__V1, origFF___classquadru
 					
 					if atuple in classquadruples__torsionsV3EnergyContribs:
 						classquadruples__torsionsV3EnergyContribs[ atuple ] += 1. + math.cos(  3 * phi - phase )
-						#classquadruples__torsionsV3EnergyContribs_BW[ atuple ] += 1. + math.cos(  3 * phi - phase ) * math.sqrt(Boltzmann_weight[a])
+						if dict_keywords['boltzmann_weighted_fitting'] == True:
+							classquadruples__torsionsV3EnergyContribs_BW[ atuple ] += (1. + math.cos(  3 * phi - phase )) * math.sqrt(Boltzmann_weight[a])
 					else:
 						classquadruples__torsionsV3EnergyContribs[ atuple ] = 1. + math.cos(  3 * phi - phase )
-						#classquadruples__torsionsV3EnergyContribs_BW[ atuple ] = 1. + math.cos(  3 * phi - phase ) * math.sqrt(Boltzmann_weight[a])
+						if dict_keywords['boltzmann_weighted_fitting'] == True:
+							classquadruples__torsionsV3EnergyContribs_BW[ atuple ] = (1. + math.cos(  3 * phi - phase )) * math.sqrt(Boltzmann_weight[a])
 	
 		listofdicts_logfiles___classquadruples__torsionsV1EnergyContribs.append( classquadruples__torsionsV1EnergyContribs )
 		listofdicts_logfiles___classquadruples__torsionsV2EnergyContribs.append( classquadruples__torsionsV2EnergyContribs )
 		listofdicts_logfiles___classquadruples__torsionsV3EnergyContribs.append( classquadruples__torsionsV3EnergyContribs )
-		#listofdicts_logfiles___classquadruples__torsionsV1EnergyContribs_BW.append( classquadruples__torsionsV1EnergyContribs )
-		#listofdicts_logfiles___classquadruples__torsionsV2EnergyContribs_BW.append( classquadruples__torsionsV2EnergyContribs )
-		#listofdicts_logfiles___classquadruples__torsionsV3EnergyContribs_BW.append( classquadruples__torsionsV3EnergyContribs )
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			listofdicts_logfiles___classquadruples__torsionsV1EnergyContribs_BW.append( classquadruples__torsionsV1EnergyContribs )
+			listofdicts_logfiles___classquadruples__torsionsV2EnergyContribs_BW.append( classquadruples__torsionsV2EnergyContribs )
+			listofdicts_logfiles___classquadruples__torsionsV3EnergyContribs_BW.append( classquadruples__torsionsV3EnergyContribs )
 	
 	sortedlist_V1classquadruples = []
 	sortedlist_V2classquadruples = []
@@ -3927,42 +3963,48 @@ def get_torsionsEnergyContribs(origFF___classquadruple__V1, origFF___classquadru
 	for V1classquadruple in sortedlist_V1classquadruples:
 	
 		list_V1classquadruple_contribs = []
-		#list_V1classquadruple_contribs_BW = []
+		list_V1classquadruple_contribs_BW = []
 	
 		for classquadruples__torsionsV1EnergyContribs in listofdicts_logfiles___classquadruples__torsionsV1EnergyContribs:
 			list_V1classquadruple_contribs.append( classquadruples__torsionsV1EnergyContribs[ V1classquadruple ] )
-		#for classquadruples__torsionsV1EnergyContribs in listofdicts_logfiles___classquadruples__torsionsV1EnergyContribs_BW:
-		#	list_V1classquadruple_contribs_BW.append( classquadruples__torsionsV1EnergyContribs[ V1classquadruple ] )
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			for classquadruples__torsionsV1EnergyContribs in listofdicts_logfiles___classquadruples__torsionsV1EnergyContribs_BW:
+				list_V1classquadruple_contribs_BW.append( classquadruples__torsionsV1EnergyContribs[ V1classquadruple ] )
 	
 		data['torsionsV1_1+math.cos(1*phi-phase)_classquadruple'+str(V1classquadruple)] = list_V1classquadruple_contribs
-		#data['torsionsV1_1+math.cos(1*phi-phase)_classquadruple_BW'+str(V1classquadruple)] = list_V1classquadruple_contribs_BW
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			data['torsionsV1_1+math.cos(1*phi-phase)_classquadruple_BW'+str(V1classquadruple)] = list_V1classquadruple_contribs_BW
 		
 	for V2classquadruple in sortedlist_V2classquadruples:
 	
 		list_V2classquadruple_contribs = []
-		#list_V2classquadruple_contribs_BW = []
+		list_V2classquadruple_contribs_BW = []
 	
 		for classquadruples__torsionsV2EnergyContribs in listofdicts_logfiles___classquadruples__torsionsV2EnergyContribs:
 			list_V2classquadruple_contribs.append( classquadruples__torsionsV2EnergyContribs[ V2classquadruple ] )
-		#for classquadruples__torsionsV2EnergyContribs in listofdicts_logfiles___classquadruples__torsionsV2EnergyContribs_BW:
-		#	list_V2classquadruple_contribs_BW.append( classquadruples__torsionsV2EnergyContribs[ V2classquadruple ] )
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			for classquadruples__torsionsV2EnergyContribs in listofdicts_logfiles___classquadruples__torsionsV2EnergyContribs_BW:
+				list_V2classquadruple_contribs_BW.append( classquadruples__torsionsV2EnergyContribs[ V2classquadruple ] )
 	
 		data['torsionsV2_1+math.cos(2*phi-phase)_classquadruple'+str(V2classquadruple)] = list_V2classquadruple_contribs
-		#data['torsionsV2_1+math.cos(2*phi-phase)_classquadruple_BW'+str(V2classquadruple)] = list_V2classquadruple_contribs_BW
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			data['torsionsV2_1+math.cos(2*phi-phase)_classquadruple_BW'+str(V2classquadruple)] = list_V2classquadruple_contribs_BW
 		
 	
 	for V3classquadruple in sortedlist_V3classquadruples:
 	
 		list_V3classquadruple_contribs = []
-		#list_V3classquadruple_contribs_BW = []
+		list_V3classquadruple_contribs_BW = []
 	
 		for classquadruples__torsionsV3EnergyContribs in listofdicts_logfiles___classquadruples__torsionsV3EnergyContribs:
 			list_V3classquadruple_contribs.append( classquadruples__torsionsV3EnergyContribs[ V3classquadruple ] )
-		#for classquadruples__torsionsV3EnergyContribs in listofdicts_logfiles___classquadruples__torsionsV3EnergyContribs_BW:
-		#	list_V3classquadruple_contribs_BW.append( classquadruples__torsionsV3EnergyContribs[ V3classquadruple ] )
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			for classquadruples__torsionsV3EnergyContribs in listofdicts_logfiles___classquadruples__torsionsV3EnergyContribs_BW:
+				list_V3classquadruple_contribs_BW.append( classquadruples__torsionsV3EnergyContribs[ V3classquadruple ] )
 	
 		data['torsionsV3_1+math.cos(3*phi-phase)_classquadruple'+str(V3classquadruple)] = list_V3classquadruple_contribs
-		#data['torsionsV3_1+math.cos(3*phi-phase)_classquadruple_BW'+str(V3classquadruple)] = list_V3classquadruple_contribs_BW
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			data['torsionsV3_1+math.cos(3*phi-phase)_classquadruple_BW'+str(V3classquadruple)] = list_V3classquadruple_contribs_BW
 	
 	return()
 
@@ -3978,7 +4020,7 @@ def get_torsionsEnergyContribs(origFF___classquadruple__V1, origFF___classquadru
 def get_vdWenergyContribs(pairs__sigma):
 
 	listofdicts_logfiles___typepairs__vdWenergyContribs = []
-	#listofdicts_logfiles___typepairs__vdWenergyContribs_BW = []
+	listofdicts_logfiles___typepairs__vdWenergyContribs_BW = []
 	
 	a=-1
 	for n_atom__xyz in listofdicts_logfiles___n_atom__xyz:
@@ -3988,7 +4030,8 @@ def get_vdWenergyContribs(pairs__sigma):
 		pairs__distances = get_distances(n_atom__xyz)
 	
 		typepairs__vdWenergyContribs = {}
-		#typepairs__vdWenergyContribs_BW = {}
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			typepairs__vdWenergyContribs_BW = {}
 	
 		for pair,sigma in pairs__sigma.items():
 	
@@ -4006,13 +4049,16 @@ def get_vdWenergyContribs(pairs__sigma):
 
 			if atuple in typepairs__vdWenergyContribs:
 				typepairs__vdWenergyContribs[ atuple ] += 4. * f * ( (sigma/r)**12. - (sigma/r)**6. )
-				#typepairs__vdWenergyContribs_BW[ atuple ] += 4. * f * ( (sigma/r)**12. - (sigma/r)**6. ) * math.sqrt(Boltzmann_weight[a])
+				if dict_keywords['boltzmann_weighted_fitting'] == True:
+					typepairs__vdWenergyContribs_BW[ atuple ] += 4. * f * ( (sigma/r)**12. - (sigma/r)**6. ) * math.sqrt(Boltzmann_weight[a])
 			else:
 				typepairs__vdWenergyContribs[ atuple ] = 4. * f * ( (sigma/r)**12. - (sigma/r)**6. )
-				#typepairs__vdWenergyContribs_BW[ atuple ] = 4. * f * ( (sigma/r)**12. - (sigma/r)**6. ) * math.sqrt(Boltzmann_weight[a])
+				if dict_keywords['boltzmann_weighted_fitting'] == True:
+					typepairs__vdWenergyContribs_BW[ atuple ] = 4. * f * ( (sigma/r)**12. - (sigma/r)**6. ) * math.sqrt(Boltzmann_weight[a])
 	
 		listofdicts_logfiles___typepairs__vdWenergyContribs.append( typepairs__vdWenergyContribs )
-		#listofdicts_logfiles___typepairs__vdWenergyContribs_BW.append( typepairs__vdWenergyContribs_BW )
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			listofdicts_logfiles___typepairs__vdWenergyContribs_BW.append( typepairs__vdWenergyContribs_BW )
 	
 	sortedlist_typepairs = []
 	
@@ -4023,16 +4069,19 @@ def get_vdWenergyContribs(pairs__sigma):
 	for typepair in sortedlist_typepairs:
 	
 		list_typepair_contribs = []
-		#list_typepair_contribs_BW = []
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			list_typepair_contribs_BW = []
 	
 		for typepairs__vdWenergyContribs in listofdicts_logfiles___typepairs__vdWenergyContribs:
 			list_typepair_contribs.append( typepairs__vdWenergyContribs[ typepair ] )
-		#for typepairs__vdWenergyContribs in listofdicts_logfiles___typepairs__vdWenergyContribs_BW:
-		#	list_typepair_contribs_BW.append( typepairs__vdWenergyContribs[ typepair ] )
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			for typepairs__vdWenergyContribs in listofdicts_logfiles___typepairs__vdWenergyContribs_BW:
+				list_typepair_contribs_BW.append( typepairs__vdWenergyContribs[ typepair ] )
 			
 	
 		data['vdW_4*f*((sigma/r)**12-(sigma/r)**6)_typepair'+str(typepair)] = list_typepair_contribs
-		#data['vdW_4*f*((sigma/r)**12-(sigma/r)**6)_typepair_BW'+str(typepair)] = list_typepair_contribs_BW
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			data['vdW_4*f*((sigma/r)**12-(sigma/r)**6)_typepair_BW'+str(typepair)] = list_typepair_contribs_BW
 	
 	return()
 
@@ -4046,10 +4095,14 @@ def do_regression_epsilon_vdW():
 	predictors = []
 	
 	for colname in data:
-		if ( 'vdW' in colname ) and ( 'typepair' in colname ):
-			predictors.append( colname )
-		#if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' in colname):
+		#if ( 'vdW' in colname ) and ( 'typepair' in colname ):
 		#	predictors.append( colname )
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' in colname):
+				predictors.append( colname )
+		else:
+			if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' not in colname):
+				predictors.append( colname )
 	
 	if dict_keywords['RegressionEpsilonMethod'] == 'LinearRegression':
 		reg = LinearRegression(fit_intercept=True, normalize=False)
@@ -4062,10 +4115,17 @@ def do_regression_epsilon_vdW():
 			reg = Lasso(alpha=dict_keywords['regularization_parameter_epsilon'], fit_intercept=True, normalize=False, positive=False)
 	
 	if dict_keywords['fine_tune_epsilon'] == 'RegressionMBD':
-		reg.fit(data[predictors], data[ 'E_MBD (Embd)' ])
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			reg.fit(data[predictors], data[ 'E_MBD (Embd)_BW' ])
+		else:
+			reg.fit(data[predictors], data[ 'E_MBD (Embd)' ])
+		
 	elif dict_keywords['fine_tune_epsilon'] == 'RegressionTS':
-		reg.fit(data[predictors], data[ 'E_vdW(TS) (EvdW)' ])
-		#reg.fit(data[predictors], data[ 'E_vdW(TS) (EvdW)_BW' ])
+		#reg.fit(data[predictors], data[ 'E_vdW(TS) (EvdW)' ])
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			reg.fit(data[predictors], data[ 'E_vdW(TS) (EvdW)_BW' ])
+		else:
+			reg.fit(data[predictors], data[ 'E_vdW(TS) (EvdW)' ])
 	
 	# get some infos
 	if True:
@@ -4085,10 +4145,16 @@ def do_regression_epsilon_vdW():
 	# get list of (already sorted) typepairs from DataFrame
 	sortedlist_typepairs = []
 	for colname in data:
-		if ( 'vdW' in colname ) and ( 'typepair' in colname ):
-			string_typepair = re.findall('\([0-9]*, [0-9]*\)',colname)
-			typepair = ast.literal_eval(string_typepair[0])
-			sortedlist_typepairs.append( typepair )
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' in colname):
+				string_typepair = re.findall('\([0-9]*, [0-9]*\)',colname)
+				typepair = ast.literal_eval(string_typepair[0])
+				sortedlist_typepairs.append( typepair )
+		else:
+			if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' not in colname):
+				string_typepair = re.findall('\([0-9]*, [0-9]*\)',colname)
+				typepair = ast.literal_eval(string_typepair[0])
+				sortedlist_typepairs.append( typepair )
 	
 	typepairs__epsilon = {}
 	
@@ -4119,9 +4185,15 @@ def do_regression_epsilon_Tot(origFF___typepairs__epsilon):
 	predictors = []
 	
 	for colname in data:
-		if ( 'vdW' in colname ) and ( 'typepair' in colname ):
-			predictors.append( colname )
-	
+		#if ( 'vdW' in colname ) and ( 'typepair' in colname ):
+		#	predictors.append( colname )
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' in colname):
+				predictors.append( colname )
+		else:
+			if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' not in colname):
+				predictors.append( colname )
+				
 	if dict_keywords['RegressionEpsilonMethod'] == 'LinearRegression':
 		reg = LinearRegression(fit_intercept=True, normalize=False)
 	elif dict_keywords['RegressionEpsilonMethod'] == 'Ridge':
@@ -4140,7 +4212,16 @@ def do_regression_epsilon_Tot(origFF___typepairs__epsilon):
 																	- data['Ebonds_(FF)'] \
 																	- data['Epol_(FF)']
 	
-	reg.fit(data[predictors], data['Ehl-Ecoul-Etorsions-Eimprops-Eangles-Ebonds-Epol'])
+	if dict_keywords['boltzmann_weighted_fitting'] == True:
+		a=-1
+		target=[]
+		for i in data['Ehl-Ecoul-Etorsions-Eimprops-Eangles-Ebonds-Epol']:
+			a+=1
+			num = i*math.sqrt(Boltzmann_weight[a])
+			target.append(num)
+		reg.fit(data[predictors], target)
+	else:
+		reg.fit(data[predictors], data['Ehl-Ecoul-Etorsions-Eimprops-Eangles-Ebonds-Epol'])
 	
 	# get some infos
 	if True:
@@ -4157,10 +4238,16 @@ def do_regression_epsilon_Tot(origFF___typepairs__epsilon):
 	# get list of (already sorted) typepairs from DataFrame
 	sortedlist_typepairs = []
 	for colname in data:
-		if ( 'vdW' in colname ) and ( 'typepair' in colname ):
-			string_typepair = re.findall('\([0-9]*, [0-9]*\)',colname)
-			typepair = ast.literal_eval(string_typepair[0])
-			sortedlist_typepairs.append( typepair )
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' in colname):
+				string_typepair = re.findall('\([0-9]*, [0-9]*\)',colname)
+				typepair = ast.literal_eval(string_typepair[0])
+				sortedlist_typepairs.append( typepair )
+		else:
+			if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' not in colname):
+				string_typepair = re.findall('\([0-9]*, [0-9]*\)',colname)
+				typepair = ast.literal_eval(string_typepair[0])
+				sortedlist_typepairs.append( typepair )	
 	
 	typepairs__epsilon = {}
 	
@@ -4191,12 +4278,13 @@ def do_regression_torsionalV(origFF___classquadruple__V1,origFF___classquadruple
 	predictors = []
 	
 	for colname in data:
-		if ( 'torsionsV' in colname ) and ( 'classquadruple' in colname ):
-			predictors.append( colname )
-		#if ( 'torsionsV' in colname ) and ( 'classquadruple' in colname ) and ( 'BW' in colname ):
-		#	predictors.append( colname )
-	
-	
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			if ( 'torsionsV' in colname ) and ( 'classquadruple' in colname ) and ( 'BW' in colname ):
+				predictors.append( colname )
+		else:
+			if ( 'torsionsV' in colname ) and ( 'classquadruple' in colname ) and ( 'BW' not in colname ):
+				predictors.append( colname )
+			
 	if dict_keywords['Regression_torsionalV_Method'] == 'LinearRegression':
 		reg = LinearRegression(fit_intercept=True, normalize=False)
 	elif dict_keywords['Regression_torsionalV_Method'] == 'Ridge':
@@ -4211,9 +4299,18 @@ def do_regression_torsionalV(origFF___classquadruple__V1,origFF___classquadruple
 													- data['Eangles_(FF)'] \
 													- data['Ebonds_(FF)'] \
 													- data['Epol_(FF)']
-		
 	
-	reg.fit(data[predictors], data['Ehl-Ecoul-Evdw-Eimprops-Eangles-Ebonds-Epol'])
+	if dict_keywords['boltzmann_weighted_fitting'] == True:
+		a=-1
+		target=[]
+		for i in data['Ehl-Ecoul-Evdw-Eimprops-Eangles-Ebonds-Epol']:
+			a+=1
+			num = i*math.sqrt(Boltzmann_weight[a])
+			target.append(num)
+		reg.fit(data[predictors], target)
+	else:
+		reg.fit(data[predictors], data['Ehl-Ecoul-Evdw-Eimprops-Eangles-Ebonds-Epol'])
+	#reg.fit(data[predictors], target)
 	
 	# get some infos
 	if False:
@@ -4232,18 +4329,32 @@ def do_regression_torsionalV(origFF___classquadruple__V1,origFF___classquadruple
 	sortedlist_classquadruplesV2 = []
 	sortedlist_classquadruplesV3 = []
 	for colname in data:
-		if ( 'torsionsV1' in colname ) and ( 'classquadruple' in colname ):
-			string_classquadrupleV1 = re.findall('\([0-9]*, [0-9]*, [0-9]*, [0-9]*\)',colname)
-			classquadrupleV1 = ast.literal_eval(string_classquadrupleV1[0])
-			sortedlist_classquadruplesV1.append( classquadrupleV1 )
-		if ( 'torsionsV2' in colname ) and ( 'classquadruple' in colname ):
-			string_classquadrupleV2 = re.findall('\([0-9]*, [0-9]*, [0-9]*, [0-9]*\)',colname)
-			classquadrupleV2 = ast.literal_eval(string_classquadrupleV2[0])
-			sortedlist_classquadruplesV2.append( classquadrupleV2 )
-		if ( 'torsionsV3' in colname ) and ( 'classquadruple' in colname ):
-			string_classquadrupleV3 = re.findall('\([0-9]*, [0-9]*, [0-9]*, [0-9]*\)',colname)
-			classquadrupleV3 = ast.literal_eval(string_classquadrupleV3[0])
-			sortedlist_classquadruplesV3.append( classquadrupleV3 )
+		if dict_keywords['boltzmann_weighted_fitting'] == True:
+			if ( 'torsionsV1' in colname ) and ( 'classquadruple' in colname ) and ( 'BW' in colname ):
+				string_classquadrupleV1 = re.findall('\([0-9]*, [0-9]*, [0-9]*, [0-9]*\)',colname)
+				classquadrupleV1 = ast.literal_eval(string_classquadrupleV1[0])
+				sortedlist_classquadruplesV1.append( classquadrupleV1 )
+			if ( 'torsionsV2' in colname ) and ( 'classquadruple' in colname ) and ( 'BW' in colname ):
+				string_classquadrupleV2 = re.findall('\([0-9]*, [0-9]*, [0-9]*, [0-9]*\)',colname)
+				classquadrupleV2 = ast.literal_eval(string_classquadrupleV2[0])
+				sortedlist_classquadruplesV2.append( classquadrupleV2 )
+			if ( 'torsionsV3' in colname ) and ( 'classquadruple' in colname ) and ( 'BW' in colname ):
+				string_classquadrupleV3 = re.findall('\([0-9]*, [0-9]*, [0-9]*, [0-9]*\)',colname)
+				classquadrupleV3 = ast.literal_eval(string_classquadrupleV3[0])
+				sortedlist_classquadruplesV3.append( classquadrupleV3 )
+		else:
+			if ( 'torsionsV1' in colname ) and ( 'classquadruple' in colname ) and ( 'BW' not in colname ):
+				string_classquadrupleV1 = re.findall('\([0-9]*, [0-9]*, [0-9]*, [0-9]*\)',colname)
+				classquadrupleV1 = ast.literal_eval(string_classquadrupleV1[0])
+				sortedlist_classquadruplesV1.append( classquadrupleV1 )
+			if ( 'torsionsV2' in colname ) and ( 'classquadruple' in colname ) and ( 'BW' not in colname ):
+				string_classquadrupleV2 = re.findall('\([0-9]*, [0-9]*, [0-9]*, [0-9]*\)',colname)
+				classquadrupleV2 = ast.literal_eval(string_classquadrupleV2[0])
+				sortedlist_classquadruplesV2.append( classquadrupleV2 )
+			if ( 'torsionsV3' in colname ) and ( 'classquadruple' in colname ) and ( 'BW' not in colname ):
+				string_classquadrupleV3 = re.findall('\([0-9]*, [0-9]*, [0-9]*, [0-9]*\)',colname)
+				classquadrupleV3 = ast.literal_eval(string_classquadrupleV3[0])
+				sortedlist_classquadruplesV3.append( classquadrupleV3 )
 	
 	classquadruple__V1 = {}
 	classquadruple__V2 = {}

@@ -10,6 +10,21 @@
 readparamsfromffaffurr False
 #readparamsfromffaffurr True
 
+# Boltzmann factors are of form: A * exp( - Ei_QM / RT)
+# A = normalization constant
+# Ei_QM = QM relative energy
+# RT = temperature factor
+# Boltzmann weighted fitting can be used
+#     (use: readparamsfromffaffurr False)
+#     OR unweighted fitting
+#     (use: readparamsfromffaffurr False)
+boltzmann_weighted_fitting False
+#boltzmann_weighted_fitting True
+
+# only if boltzmann_weighted_fitting == True
+# set temperature factor
+temperature_factor 32
+
 # bonding terms are of form: 0.5 * kB * (r-r0)**2
 # kB = spring constant parameter
 #      -> original FF parameters are used
@@ -126,11 +141,11 @@ regularization_parameter_imptorsionalV 30.0
 #            OR epsilon parameters can be assigned using regression
 #               from total energies of FHI-aims input logfiles
 #               (use: fine_tune_epsilon RegressionTot)
-#fine_tune_sigma False
-fine_tune_sigma TS
-#fine_tune_epsilon False
+fine_tune_sigma False
+#fine_tune_sigma TS
+fine_tune_epsilon False
 #fine_tune_epsilon TS
-fine_tune_epsilon RegressionTS
+#fine_tune_epsilon RegressionTS
 #fine_tune_epsilon RegressionMBD
 #fine_tune_epsilon RegressionTot
 
@@ -281,8 +296,8 @@ fine_tune_starting_points False
 #    -> polarization energy can be included in force field
 #       (use: fine_tune_polarization_energy True)
 #    OR not (use: fine_tune_polarization_energy False)
-#fine_tune_polarization_energy False
-fine_tune_polarization_energy True
+fine_tune_polarization_energy False
+#fine_tune_polarization_energy True
 
 # only if fine_tune_polarization_energy == True:
 # atomic polarizabilities:
