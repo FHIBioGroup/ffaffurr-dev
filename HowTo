@@ -12,7 +12,7 @@ Obviously, these files must be produced for a set of conformers that serves as t
 
 Finally, the input file ffaffurr.input contains the "switches" that control the behavior of the framework, e.g. what kind of parameters are to be "adjusted" or what regression model to use.
 
-After "adjusting", we put new parameters into two files: ffaffurr-amber03.xml and CustomForce.xml:
+After "adjusting", we put new parameters into two files: ffaffurr-oplsaa.xml and CustomForce.xml:
 
 ffaffurr-oplsaa.xml includes all the parameters in standard OPLS-AA FF.
 
