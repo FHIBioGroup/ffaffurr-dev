@@ -2,19 +2,21 @@
 FFAFFURR -- Framework For Adjusting Force Fields Using Regularized Regression
 -----------------------------------------------------------------------------
 
-Because the goal is to "adjust" existing parameters of the OPLS-AA FF, it is reasonable to provide a standardized listing of parameters as input.
+Because the goal is to "adjust" existing parameters of the OPLS-AA FF, it is reasonable to provide a standardized listing of parameters as input. 
+Thus, parameter file "OPLS-AA.xml" is needed.
 For any system already set-up with OpenMM, e.g. when using the standard OPLS-AA FF parameters that are distributed with the OpenMM package, the standardized parameters and connectivity list are taken from the inner code of OpenMM by ffaffurr.py. Here, a coordinate file is needed.
 
-The input.pdb file is the basic coordinate file that OpenMM-readable.
+Secondly, The "input.pdb" file is the basic coordinate file that OpenMM-readable.
 
-Secondly, the input file ffaffurr.input.FHI-aims-logfiles contains a list of FHI-aims-specific output files produced when calculating single-point DFT energies.
+Thirdly, the input file "ffaffurr.input" contains the "switches" that control the behavior of the framework, e.g. what kind of parameters are to be "adjusted" or what regression model to use.
+
+Finally, the input file "ffaffurr.input.FHI-aims-logfiles" contains a list of FHI-aims-specific (https://fhi-aims.org/) output files produced when calculating single-point DFT energies.
 Obviously, these files must be produced for a set of conformers that serves as training data.
+If RESP charges are specified in "ffaffurr.input", a seperate file 'resp.chrg' containing atomic RESP charges for each conformer should be included in the folders listed in ffaffurr.input.FHI-aims-logfiles.
 
-Finally, the input file ffaffurr.input contains the "switches" that control the behavior of the framework, e.g. what kind of parameters are to be "adjusted" or what regression model to use.
+After all input files are ready, we can use "python ffaffurr.py" to do the "adjusting". With this, we put new parameters into two files: "ffaffurr-oplsaa.xml" and "CustomForce.xml":
 
-After "adjusting", we put new parameters into two files: ffaffurr-oplsaa.xml and CustomForce.xml:
+"ffaffurr-oplsaa.xml" includes all the parameters in standard OPLS-AA FF.
 
-ffaffurr-oplsaa.xml includes all the parameters in standard OPLS-AA FF.
-
-CustomForce.xml includes charge transfer and polarization parameters.
+"CustomForce.xml" includes charge transfer and polarization parameters.
 
