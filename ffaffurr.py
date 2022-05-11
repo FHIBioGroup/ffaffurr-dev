@@ -934,7 +934,8 @@ def get_input_loop_lines(lines, key):
 		if line:
 			line = line.lstrip()
 			if not line.startswith("#"):
-				keyword, keycontent = line.split(None, 1)
+				keyword= line.split(None, 2)[0]
+				keycontent = line.split(None, 2)[1]
 				if keyword in [key]:
 					string = keycontent
 					break
