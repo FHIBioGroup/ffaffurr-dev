@@ -27,11 +27,11 @@ All the available keywords and their descriptions in **ffaffurr.input** are list
 -  **Tag: readparamsfromffaffurr** 
 	- Usage: readparamsfromffaffurr *True/False*
 	- Purpose: 
-> - choose original parameters from
-> -     OPLS-AA.xml
-> -    (use: readparamsfromffaffurr False)
-> -   OR ffaffurr-oplsaa.xml.This is used to optimize parameters step by  step.
-> -   (use: readparamsfromffaffurr True)
+> 	- choose original parameters from
+> 	-     OPLS-AA.xml
+> 	-    (use: readparamsfromffaffurr False)
+> 	-   OR ffaffurr-oplsaa.xml.This is used to optimize parameters step by  step.
+>	 -   (use: readparamsfromffaffurr True)
 
 ### Choose the fitting type (Weighted or unweighted)
 
