@@ -25,10 +25,8 @@ All the available keywords and their descriptions in **ffaffurr.input** are list
 
 ### Choose original parameters
 -  **Tag: readparamsfromffaffurr** 
-
-Usage: readparamsfromffaffurr *True/False*
-
-Purpose: 
+	- Usage: readparamsfromffaffurr *True/False*
+	- Purpose: 
 > choose original parameters from
 >     OPLS-AA.xml
 >    (use: readparamsfromffaffurr False)
