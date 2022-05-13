@@ -383,6 +383,7 @@ All the available keywords and their descriptions in **ffaffurr.input** are list
 
 An example of the usage of FFAFFURR is in the **workingExample-AcCysNMe** folder. The example should be run with the following command:
 ~~~
+cd workingExample-AcCysNMe
 python ../ffaffurr.py
 ~~~
 
