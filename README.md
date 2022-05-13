@@ -7,6 +7,8 @@ FFAFFURR is a Python tool, which enables the parametrization of OPLS-AA and CTPO
 - python 3 
 - OpenMM 7.4.2
 - [pyswarm](https://github.com/XiaojuanHu/pyswarm)
+- [Numpy](https://numpy.org/)
+- [Pandas](https://pandas.pydata.org/)
 
 ## Input Files
 - **OPLS-AA.xml**
@@ -381,6 +383,7 @@ All the available keywords and their descriptions in **ffaffurr.input** are list
 
 An example of the usage of FFAFFURR is in the **workingExample-AcCysNMe** folder. The example should be run with the following command:
 ~~~
+cd workingExample-AcCysNMe
 python ../ffaffurr.py
 ~~~
 
