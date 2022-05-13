@@ -8,7 +8,7 @@ FFAFFURR is a Python tool, which enables the parametrization of OPLS-AA and CTPO
 - OpenMM 7.4.2
 - [pyswarm](https://github.com/XiaojuanHu/pyswarm)
 
-## Inputs
+## Input Files
 - **OPLS-AA.xml**
 Because the goal is to "adjust" existing parameters of the OPLS-AA FF, it is reasonable to provide a standardized listing of parameters as input.  Thus, parameter file "OPLS-AA.xml" is needed. For any system already set-up with OpenMM, e.g. when using the standard OPLS-AA FF parameters that are distributed with the OpenMM package, the standardized parameters and connectivity list are taken from the inner code of OpenMM by ffaffurr.py.
 - **input.pdb**
