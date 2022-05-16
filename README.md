@@ -6,9 +6,12 @@ FFAFFURR is a Python tool, which enables the parametrization of OPLS-AA and CTPO
 ## Requirements
 - python 3 
 - OpenMM 7.7.0
-- [pyswarm](https://github.com/XiaojuanHu/pyswarm)
+
+- [pyswarm](https://github.com/XiaojuanHu/pyswarm) (The installation of pyswarm can be found [here](https://pythonhosted.org/pyswarm/ ))
 - Numpy
 - Pandas
+- [scipy](https://scipy.org/)
+- [sklearn](https://scikit-learn.org/stable/)
 
 ## Inputs
 - **OPLS-AA.xml**
@@ -21,6 +24,14 @@ The input file "ffaffurr.input" contains the "switches" that control the behavio
 the input file "ffaffurr.input.FHI-aims-logfiles" contains a list of FHI-aims-specific (https://fhi-aims.org/) output files produced when calculating single-point DFT energies. Obviously, these files must be produced for a set of conformers that serves as training data.
 	- **resp.chrg**
 	If RESP charges are specified in "ffaffurr.input", a seperate file 'resp.chrg' containing atomic RESP charges for each conformer should be included in the folders listed in ffaffurr.input.FHI-aims-logfiles.
+
+## Example Usage
+
+An example of the usage of FFAFFURR is in the **workingExample-AcCysNMe** folder. The example should be run with the following command:
+~~~
+cd workingExample-AcCysNMe
+python ../ffaffurr.py
+~~~
 
 ## List of input keywords
 All the available keywords and their descriptions in **ffaffurr.input** are listed below. In **ffaffurr.input**, lines starting with “#” is a comment.
@@ -379,13 +390,6 @@ All the available keywords and their descriptions in **ffaffurr.input** are list
 - **CustomForce.xml**
 "CustomForce.xml" includes charge transfer and polarization parameters.
 
-## Example Usage
-
-An example of the usage of FFAFFURR is in the **workingExample-AcCysNMe** folder. The example should be run with the following command:
-~~~
-cd workingExample-AcCysNMe
-python ../ffaffurr.py
-~~~
 
 ## Contact
 
