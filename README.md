@@ -5,7 +5,7 @@ FFAFFURR is a Python tool, which enables the parametrization of OPLS-AA and CTPO
 
 ## Requirements
 - python 3 
-- OpenMM 7.4.2
+- OpenMM 7.7.0
 - [pyswarm](https://github.com/XiaojuanHu/pyswarm)
 - [Numpy](https://numpy.org/)
 - [Pandas](https://pandas.pydata.org/)

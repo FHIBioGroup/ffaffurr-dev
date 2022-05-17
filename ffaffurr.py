@@ -11,10 +11,10 @@ import re
 import ast
 import time
 import multiprocessing
-from simtk.openmm.app import *
-from simtk.openmm.app.internal import *
-from simtk.openmm import *
-from simtk.unit import *
+from openmm.app import *
+from openmm.app.internal import *
+from openmm import *
+from openmm.unit import *
 
 from scipy.optimize import curve_fit, minimize
 
@@ -988,7 +988,7 @@ def get_originalFF_params():
 		sys.exit('== Error: Number of torsional angles should be a natural number. Exiting now...')
 	
 	# data.atoms, data.atomType, data.atomType[atom]
-	data = forcefield._SystemData()
+	data = forcefield._SystemData(pdb.topology)
 	
 	# Make a list of all atoms ('name', 'element', 'index', 'residue', 'id')
 	data.atoms = list(pdb.topology.atoms())
