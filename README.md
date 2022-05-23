@@ -24,6 +24,14 @@ the input file "ffaffurr.input.FHI-aims-logfiles" contains a list of FHI-aims-sp
 	- **resp.chrg**
 	If RESP charges are specified in "ffaffurr.input", a seperate file 'resp.chrg' containing atomic RESP charges for each conformer should be included in the folders listed in ffaffurr.input.FHI-aims-logfiles.
 
+## Example Usage
+
+An example of the usage of FFAFFURR is in the **workingExample-AcCysNMe** folder. The example should be run with the following command:
+~~~
+cd workingExample-AcCysNMe
+python ../ffaffurr.py
+~~~
+
 ## List of input keywords
 All the available keywords and their descriptions in **ffaffurr.input** are listed below. In **ffaffurr.input**, lines starting with “#” is a comment.
 
@@ -381,13 +389,6 @@ All the available keywords and their descriptions in **ffaffurr.input** are list
 - **CustomForce.xml**
 "CustomForce.xml" includes charge transfer and polarization parameters.
 
-## Example Usage
-
-An example of the usage of FFAFFURR is in the **workingExample-AcCysNMe** folder. The example should be run with the following command:
-~~~
-cd workingExample-AcCysNMe
-python ../ffaffurr.py
-~~~
 
 ## Contact
 
