@@ -23,7 +23,9 @@ The input file "ffaffurr.input" contains the "switches" that control the behavio
 the input file "ffaffurr.input.FHI-aims-logfiles" contains a list of FHI-aims-specific (https://fhi-aims.org/) output files produced when calculating single-point DFT energies. Obviously, these files must be produced for a set of conformers that serves as training data.
 	- **resp.chrg**
 	If RESP charges are specified in "ffaffurr.input", a seperate file 'resp.chrg' containing atomic RESP charges for each conformer should be included in the folders listed in ffaffurr.input.FHI-aims-logfiles.
-
+	- **energies_inter_DFT.dat** and **energies_minusIon_FF.dat**
+	If interaction energy is specified in "ffaffurr.input", a file 'energies_inter_DFT.dat' containing DFT interaction energy, and a file 'energies_minusIon_FF.dat' containing force filed energies of structures without ion.
+	
 ## Example Usage
 
 An example of the usage of FFAFFURR is in the **workingExample-AcCysNMe** folder. The example should be run with the following command:
@@ -269,7 +271,7 @@ All the available keywords and their descriptions in **ffaffurr.input** are list
 ### Keywords for charge transfer parametrization
 
 - **Tag: fine_tune_charge_transfer**
-	- Usage: fine_tune_charge_transfer *False/Tot/ChargeDistr/ESP*
+	- Usage: fine_tune_charge_transfer *False/Tot/Inter/ChargeDistr/ESP*
 	- Purpose:
 > - Charge transfers are of form CN ** (1/alpha) * (a * r + b):
 > - CN = coordination number
@@ -279,6 +281,8 @@ All the available keywords and their descriptions in **ffaffurr.input** are list
 > -         (use: fine_tune_charge_transfer False)
 > -      OR fitting charge transfer params to total energies of FHI-aims input logfiles
 > -         (use: fine_tune_charge_transfer Tot) 
+> -      OR fitting charge transfer params to interaction energies of FHI-aims input logfiles
+> -         (use: fine_tune_charge_transfer Inter) 
 > -      OR fitting charge transfer params to charge distribution of FHI-aims input logfiles
 > -         (use: fine_tune_charge_transfer ChargDistr)
 > - alpha, a, b are obtained by partical swarm optimizaiton(PSO)
@@ -302,19 +306,19 @@ All the available keywords and their descriptions in **ffaffurr.input** are list
 - **Tag: number_of_pso_CT**
 	- Usage: number_of_pso_CT *value*
 	- Purpose:
-> - only if fine_tune_charge_transfer = Tot/ChargDistr OR ChargeTransferESPMethod = PSO:
+> - only if fine_tune_charge_transfer = Tot/Inter/ChargDistr OR ChargeTransferESPMethod = PSO:
 > - set the number of independent PSO running (e.g. 1).
 
 - **Tag: number_of_processes_CT**
 	- Usage: number_of_processes_CT *value*
 	- Purpose:
-> - only if fine_tune_charge_transfer = Tot/ChargDistr OR ChargeTransferESPMethod = PSO:
+> - only if fine_tune_charge_transfer = Tot/Inter/ChargDistr OR ChargeTransferESPMethod = PSO:
 > - set the number of processes( e.g. 2. if processes > 1, then pso is paralleled)
 
 - **Tag: fine_tune_isolated_charges**
 	- Usage: fine_tune_isolated_charges *False/Hirshfeld/ESP/RESP*
 	- Purpose:
-> - only if fine_tune_charge_transfer = Tot/ChargDistr OR ChargeTransferESPMethod = PSO:
+> - only if fine_tune_charge_transfer = Tot/Inter/ChargDistr OR ChargeTransferESPMethod = PSO:
 > - charges of atoms before charge transfer:
 > -   -> original FF parameters can be used
 > -      (use: fine_tune_isolated_charges False)
