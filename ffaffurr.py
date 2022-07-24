@@ -172,7 +172,7 @@ def main():
 			newFF___type__charge = copy.deepcopy(origFF___type__charge)
 		elif ( dict_keywords['fine_tune_charge'] == 'Hirshfeld' ) or ( dict_keywords['fine_tune_charge'] == 'ESP') or ( dict_keywords['fine_tune_charge'] == 'RESP') :
 			newFF___type__charge = get_average_charge()
-	elif ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' ):
+	elif ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'Inter' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' ):
 		newFF___type__charge = get_type__isolated_charge(origFF___type__charge)
 	
 	# get pair-wise charge parameters (new FF) for Coulomb interactions, No charge transfer
@@ -250,17 +250,50 @@ def main():
 		 logfile__esp_xyz = get_logfiles_ESP()
 	
 	# if pso is used, write the output files seperatly.
-	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO') or ( dict_keywords['fine_tune_polarizabilities'] == True):
-		#index__Energies_DFT = get_index__fhiaims_energies()
+	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'Inter' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO') or ( dict_keywords['fine_tune_polarizabilities'] == True):
+		index__Energies_DFT = get_index__fhiaims_energies()
 		
-		if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO'):
+		if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'Inter' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO'):
 			looping_number = dict_keywords['number_of_pso_CT']
 		elif dict_keywords['fine_tune_polarizabilities'] == True:
 			looping_number = dict_keywords['number_of_pso_POL']
+		
+		if ( dict_keywords['fine_tune_charge_transfer'] == 'Inter' ):
+			
+			f=os.path.join(os.getcwd(), 'energies_inter_DFT.dat')
+			#d=pandas.read_csv(f, sep="\s+", header=0)
+
+			#data_D = d.values
+			in_file = open(f, 'r')
+			file_lines = in_file.readlines()
+			lines = list(file_lines)
+			in_file.close()
+	
+			index__interaction_Energies_DFT = {}
+			for line in lines:
+				lists = line.split(None)
+				index__interaction_Energies_DFT[lists[0]] = float(lists[1])
+				
+			f=os.path.join(os.getcwd(), 'energies_minusIon_FF.dat')
+			#d=pandas.read_csv(f, sep="\s+", header=0)
+
+			#data_F = d.values
+			in_file = open(f, 'r')
+			file_lines = in_file.readlines()
+			lines = list(file_lines)
+			in_file.close()
+			
+			index__minusCation_Energies_FF = {}
+			for line in lines:
+				lists = line.split(None)
+				index__minusCation_Energies_FF[lists[0]] = float(lists[1])
+		else:
+			index__interaction_Energies_DFT = {}
+			index__minusCation_Energies_FF = {}
 			
 		for i in range(looping_number):
 			# fine-tune charge_transfer, total energies of fhiaims
-			if (dict_keywords['fine_tune_charge_transfer'] == 'Tot') or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO'):
+			if (dict_keywords['fine_tune_charge_transfer'] == 'Tot') or ( dict_keywords['fine_tune_charge_transfer'] == 'Inter' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO'):
 				processes_num = dict_keywords['number_of_processes_CT']
 				newFF___CN_factor, \
 				newFF___type__zero_transfer_distance, \
@@ -283,6 +316,8 @@ def main():
 									newFF___type__averageAlpha0eff, \
 									newFF___gamma, \
 									index__Energies_DFT, \
+									index__interaction_Energies_DFT, \
+									index__minusCation_Energies_FF, \
 									processes_num)
 									
 			## fine-tune charge_transfer, charge distribution
@@ -343,7 +378,7 @@ def main():
 			#		pso.write('\n')
 					
 			# write OpenMM force field parameter file
-			file_name_1 = 'ffaffurr-oplsaa.' +str(i+1) + '.xml'
+			file_name_1 = 'ffaffurr-oplsaa.' + '.xml'
 			write_OpenMM_ff_params_file(file_name_1, \
 										newFF___classpair__r0, \
 										origFF___classpair__Kb, \
@@ -834,6 +869,8 @@ def get_input():
 	astring = get_input_loop_lines(lines, 'fine_tune_charge_transfer')
 	if astring in ['Tot', 'tot']:
 		dict_keywords['fine_tune_charge_transfer'] = 'Tot'
+	elif astring in ['Inter', 'inter']:
+		dict_keywords['fine_tune_charge_transfer'] = 'Inter'
 	elif astring in ['ChargDistr', 'chargdistr']:
 		dict_keywords['fine_tune_charge_transfer'] = 'ChargDistr'
 	elif astring in ['ESP', 'esp']:
@@ -856,15 +893,15 @@ def get_input():
 			astring = get_input_loop_lines(lines, 'regularization_parameter_CharTran')
 			dict_keywords['regularization_parameter_CharTran'] = float(astring)
 		
-	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO'):
+	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'Inter' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO'):
 		astring = get_input_loop_lines(lines, 'number_of_pso_CT')
 		dict_keywords['number_of_pso_CT'] = int(astring)
 			
-	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO'):
+	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or  ( dict_keywords['fine_tune_charge_transfer'] == 'Inter' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO'):
 		astring = get_input_loop_lines(lines, 'number_of_processes_CT')
 		dict_keywords['number_of_processes_CT'] = int(astring)
 			
-	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP'):
+	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'Inter' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP'):
 		astring = get_input_loop_lines(lines, 'fine_tune_isolated_charges')
 		if astring in ['False', 'false']:
 			dict_keywords['fine_tune_isolated_charges'] = 'False'
@@ -890,7 +927,7 @@ def get_input():
 	else:
 		dict_keywords['fine_tune_charges_distribution'] = False
 		
-	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO'):
+	if ( dict_keywords['fine_tune_charge_transfer'] == 'Tot' )  or ( dict_keywords['fine_tune_charge_transfer'] == 'Inter' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ) or ( dict_keywords['fine_tune_charge_transfer'] == 'ESP' and dict_keywords['ChargeTransferESPMethod'] == 'PSO'):
 		astring = get_input_loop_lines(lines, 'fine_tune_starting_points')
 		if astring in ['False', 'false']:
 			dict_keywords['fine_tune_starting_points'] = 'False'
@@ -3081,6 +3118,71 @@ def get_R0eff():
 	#print(type__averageR0eff)
 	return(type__averageR0eff)
 
+##########################################################
+#  get rmsd of training data between DFT interaction energie and FF interaction energies
+###########################################################
+def get_rmsd(classpair__Kb, \
+			 classpair__r0, \
+			 classtriple__Ktheta, \
+			 classtriple__theta0, \
+			 classquadruple__V1, \
+			 classquadruple__V2, \
+			 classquadruple__V3, \
+			 classquadruple__V4, \
+			 classquadruple__impV2, \
+			 pairs__sigma, \
+			 pairs__epsilon, \
+			 pairs__charge, \
+			 type__charge, \
+			 CN_factor, \
+			 type__zero_transfer_distance, \
+			 type__ChargeTransfer_parameters, \
+			 type__averageAlpha0eff, \
+			 gamma, \
+			 index__interaction_Energies_DFT, \
+			 index__minusCation_Energies_FF):
+				 
+	index__Energies_FF = get_FF_energy(classpair__Kb, \
+					classpair__r0, \
+					classtriple__Ktheta, \
+					classtriple__theta0, \
+					classquadruple__V1, \
+					classquadruple__V2, \
+					classquadruple__V3, \
+					classquadruple__V4, \
+					classquadruple__impV2, \
+					pairs__sigma, \
+					pairs__epsilon, \
+					pairs__charge, \
+					type__charge, \
+					CN_factor, \
+					type__zero_transfer_distance, \
+					type__ChargeTransfer_parameters,\
+					type__averageAlpha0eff, \
+					gamma)
+	
+	index__interaction_Energies_FF = {}
+	n = 0
+	for key, value in index__Energies_FF.items():
+		n += 1
+		index__interaction_Energies_FF[key] = value - index__minusCation_Energies_FF[key]
+	
+	sd = 0
+	Bwsd = 0
+	KT = 1.3806485 * ( 10 ** (-3) ) * 273.15 * 1.44 * 10  # J > kcal/mol
+	for key, value in index__interaction_Energies_FF.items():
+		sd += ( index__interaction_Energies_DFT[key] - value ) ** 2
+		
+		# Bwsd
+		w = math.exp(-1 * index__interaction_Energies_DFT[key] / KT)
+		Bwsd += w * sd
+		
+	
+	rmsd = math.sqrt(sd/n)
+
+	return(rmsd)
+
+
 ############################################################
 # fine-tune and get (type)pair-wise sigmas from TS (using R0eff)
 ############################################################
@@ -4614,6 +4716,95 @@ def PSO_objective_ChargTrans_Tot(x, *args):
 	
 	return(MAE)
 
+#############################################################################################
+# get charge transfer parameters with Partical Swarm Optimization. Fitting to interaction energies
+##############################################################################################
+
+# the target function that to be minimized
+def PSO_objective_ChargTrans_Inter(x, *args):
+	
+	type__polar = []
+		
+	for i in range(n_atoms):
+		if n_atom__atomic[i] == 8 or n_atom__atomic[i] == 16 or n_atom__atomic[i] == 7: 
+			type__polar.append(n_atom__type[i])
+	
+	type__polar = list(set(type__polar))
+	type__polar.sort()
+	
+	type__zero_transfer_distance = {}
+	type__ChargeTransfer_parameters = {}
+	for i in type__polar:
+		type__zero_transfer_distance[i] = 0
+		
+		slope = 0
+		offset = 0
+		
+		type__ChargeTransfer_parameters[i] = [slope, offset]
+	
+	type__averageAlpha0eff = get_alpha0eff()
+	
+	a = -1
+		
+	a += 1
+	CN_factor = x[a]
+	
+	pso_type__zero_transfer_distance = {}
+	for key in type__zero_transfer_distance.keys():
+		
+		a += 1
+		pso_type__zero_transfer_distance[key] = x[a]
+	
+	pso_type__ChargeTransfer_parameters = {}
+	for key in type__ChargeTransfer_parameters.keys():
+		a += 1
+		
+		slope = x[a]
+		offset = -1 * slope * pso_type__zero_transfer_distance[key]
+		pso_type__ChargeTransfer_parameters[key] = [ slope, offset]
+	
+	classpair__Kb, \
+	 classpair__r0, \
+	 classtriple__Ktheta, \
+	 classtriple__theta0, \
+	 classquadruple__V1, \
+	 classquadruple__V2, \
+	 classquadruple__V3, \
+	 classquadruple__V4, \
+	 classquadruple__impV2, \
+	 pairs__sigma, \
+	 pairs__epsilon, \
+	 pairs__charge, \
+	 type__charge, \
+	 type__averageAlpha0eff, \
+	 gamma, \
+	 index__interaction_Energies_DFT, \
+	 index__minusCation_Energies_FF = args
+	
+	
+	rmsd = get_rmsd(classpair__Kb, \
+			 classpair__r0, \
+			 classtriple__Ktheta, \
+			 classtriple__theta0, \
+			 classquadruple__V1, \
+			 classquadruple__V2, \
+			 classquadruple__V3, \
+			 classquadruple__V4, \
+			 classquadruple__impV2, \
+			 pairs__sigma, \
+			 pairs__epsilon, \
+			 pairs__charge, \
+			 type__charge, \
+			 CN_factor, \
+			 pso_type__zero_transfer_distance, \
+			 pso_type__ChargeTransfer_parameters, \
+			 type__averageAlpha0eff, \
+			 gamma, \
+			 index__interaction_Energies_DFT, \
+			 index__minusCation_Energies_FF)
+	
+	return(rmsd)
+
 def PSO_optimize(classpair__Kb, \
 					classpair__r0, \
 					classtriple__Ktheta, \
@@ -4630,6 +4821,8 @@ def PSO_optimize(classpair__Kb, \
 					type__averageAlpha0eff, \
 					gamma, \
 					index__Energies_DFT, \
+					index__interaction_Energies_DFT, \
+					index__minusCation_Energies_FF, \
 					processes_num):
 	
 	type__polar   = []
@@ -4668,6 +4861,26 @@ def PSO_optimize(classpair__Kb, \
 				gamma, \
 				index__Energies_DFT)
 		objective = PSO_objective_ChargTrans_Tot
+		
+	elif ( dict_keywords['fine_tune_charge_transfer'] == 'Inter' ):
+		args = (classpair__Kb, \
+				classpair__r0, \
+				classtriple__Ktheta, \
+				classtriple__theta0, \
+				classquadruple__V1, \
+				classquadruple__V2, \
+				classquadruple__V3, \
+				classquadruple__V4, \
+				classquadruple__impV2, \
+				pairs__sigma, \
+				pairs__epsilon, \
+				pairs__charge, \
+				type__charge, \
+				type__averageAlpha0eff, \
+				gamma, \
+				index__interaction_Energies_DFT, \
+				index__minusCation_Energies_FF)
+		objective = PSO_objective_ChargTrans_Inter
 		
 	elif ( dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr' ):		 
 		args = (type__charge, [])
@@ -6033,6 +6246,9 @@ def print_charge_transfer_params(CN_factor, \
 	elif dict_keywords['fine_tune_charge_transfer'] == 'Tot':
 		print('>>> Charge transfer have been assigned using partical swarm optimization from total energies.')
 		printf('  >> Mean absolute error from PSO: %6f\n', float(fopt))
+	elif dict_keywords['fine_tune_charge_transfer'] == 'Inter':
+		print('>>> Charge transfer have been assigned using partical swarm optimization from interaction energies.')
+		printf('  >> RMSD from PSO: %6f\n', float(fopt))
 	elif dict_keywords['fine_tune_charge_transfer'] == 'ChargDistr':
 		print('>>> Charge transfer have been assigned using partical swarm optimization from charges distribution.')
 		printf('  >> Mean absolute error from PSO: %6f\n', float(fopt))

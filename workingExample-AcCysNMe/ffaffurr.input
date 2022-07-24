@@ -20,7 +20,7 @@ fine_tune_imptorsionalV False                     #allowed values: False/Regress
 Regression_imptorsionalV_Method Ridge             #only if fine_tune_imptorsionalV == Regression. Allowed values: LinearRegression/Ridge/Lasso
 regularization_parameter_imptorsionalV 30.0       #only if Regression_imptorsionalV_Method == {Ridge/Lasso}. Allowed values: float
 
-fine_tune_sigma TS                             #allowed values: False/TS
+fine_tune_sigma False                             #allowed values: False/TS
 fine_tune_epsilon False                           #allowed values: False/TS/RegressionTS/RegressionMBD/RegressionTot
 RegressionEpsilonMethod Lasso                     #only if fine_tune_epsilon == Regression{TS/MBD/Tot}. Allowed values: LinearRegression/Ridge/Lasso
 regularization_parameter_epsilon 0.000179         #only if RegressionEpsilonMethod == {Ridge/Lasso}. Aallowed values: float
@@ -31,14 +31,14 @@ fine_tune_charge False                            #allowed values: False/Hirshfe
 fine_tune_Coulomb_fudge_factors False             #allowed values: False/True
 fine_tune_only_f14 False                          #only if fine_tune_Coulomb_fudge_factors == True. Allowed values: False/True
 
-fine_tune_charge_transfer False                   #allowed values: False/Tot/ChargDistr/ESP
+fine_tune_charge_transfer Inter                   #allowed values: False/Tot/ChargDistr/ESP/Inter
 ChargeTransferESPMethod Lasso                     #only if fine_tune_charge_transfer == ESP. Allowed values: PSO/Ridge/Lasso
 regularization_parameter_CharTran 30.0            #only if ChargeTransferESPMethod == {Ridge/Lasso}. Allowed values: float
-number_of_pso_CT 1                                #only if fine_tune_charge_transfer == Tot/ChargDistr OR ChargeTransferESPMethod == PSO. Allowed values: int
-number_of_processes_CT 4                          #only if fine_tune_charge_transfer == Tot/ChargDistr OR ChargeTransferESPMethod == PSO. Allowed values: int
-fine_tune_isolated_charges False                  #only if fine_tune_charge_transfer == Tot/ChargDistr OR ChargeTransferESPMethod == PSO. Allowed values: False/Hirshfeld/ESP/RESP
+number_of_pso_CT 1                                #only if fine_tune_charge_transfer == Tot/ChargDistr/Inter OR ChargeTransferESPMethod == PSO. Allowed values: int
+number_of_processes_CT 4                          #only if fine_tune_charge_transfer == Tot/ChargDistr/Inter OR ChargeTransferESPMethod == PSO. Allowed values: int
+fine_tune_isolated_charges False                  #only if fine_tune_charge_transfer == Tot/ChargDistr/Inter OR ChargeTransferESPMethod == PSO. Allowed values: False/Hirshfeld/ESP/RESP
 fine_tune_charges_distribution RESP               #only if fine_tune_charge_transfer == ChargDistr. Allowed values: Hirshfeld/ESP/RESP
-fine_tune_starting_points False                   #only if fine_tune_charge_transfer == Tot/ChargDistr OR ChargeTransferESPMethod == PSO. Allowed values: False/file_name(e.g. CT_initial)
+fine_tune_starting_points False                   #only if fine_tune_charge_transfer == Tot/ChargDistr/Inter OR ChargeTransferESPMethod == PSO. Allowed values: False/file_name(e.g. CT_initial)
 
 fine_tune_polarization_energy False               #allowed values: False/True
 fine_tune_polarizabilities False                  #only if fine_tune_polarization_energy == True. Allowed values: False/True
