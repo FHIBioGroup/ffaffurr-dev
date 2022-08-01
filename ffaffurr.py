@@ -47,6 +47,7 @@ def main():
 	#   here ONLY the file input.pdb is used
 	#   (OpenMM is called)
 	global n_atoms              # number of atoms
+	global n_atom__residue
 	global residues__atoms      # dictionary: residues --> atoms
 	global n_atom__type         # dictionary: atom number --> atom type
 	global n_atom__class        # dictionary: atom number --> atom class
@@ -63,6 +64,7 @@ def main():
 	global list_13_interacts
 	global list_14_interacts
 	n_atoms, \
+	n_atom__residue, \
 	 residues__atoms, \
 	 n_atom__type, \
 	 n_atom__class, \
@@ -205,7 +207,7 @@ def main():
 		newFF___typepairs__sigma = copy.deepcopy(origFF___typepairs__sigma)
 	elif dict_keywords['fine_tune_sigma'] == 'TS':
 		newFF___pairs__sigma, \
-		newFF___typepairs__sigma = get_sigmas_TS()
+		newFF___typepairs__sigma = get_sigmas_TS(origFF___pairs__sigma)
 		# if requested, set sigmas to zero that were also zero in original FF
 		if dict_keywords['SetExplicitlyZero_vdW_SigmaEpsilon'] == True:
 			newFF___pairs__sigma = set_some_dict_entries_zero(origFF___pairs__sigma, \
@@ -220,7 +222,7 @@ def main():
 		newFF___typepairs__epsilon = copy.deepcopy(origFF___typepairs__epsilon)
 	elif dict_keywords['fine_tune_epsilon'] == 'TS':
 		newFF___pairs__epsilon, \
-		newFF___typepairs__epsilon = get_epsilons_TS()
+		newFF___typepairs__epsilon = get_epsilons_TS(origFF___pairs__epsilon)
 		# if requested, set epsilons to zero that were also zero in original FF
 		if dict_keywords['SetExplicitlyZero_vdW_SigmaEpsilon'] == True:
 			newFF___pairs__epsilon = set_some_dict_entries_zero(origFF___pairs__epsilon, \
@@ -528,12 +530,12 @@ def main():
 		#            {   0 for 1-2-interactions and 1-3-interactions
 		#         f ={ 1/2 for 1-4-interactions
 		#            {   1 for 1-5-interactions and higher
-		get_vdWenergyContribs(newFF___pairs__sigma)
+		get_vdWenergyContribs(newFF___pairs__sigma, origFF___pairs__epsilon)
 		
 		# do regression for vdW (either TS or MBD or total energy) to estimate epsilon parameters
 		if ( dict_keywords['fine_tune_epsilon'] == 'RegressionMBD' ) or ( dict_keywords['fine_tune_epsilon'] == 'RegressionTS' ):
 			newFF___pairs__epsilon, \
-			newFF___typepairs__epsilon = do_regression_epsilon_vdW() 
+			newFF___typepairs__epsilon = do_regression_epsilon_vdW(origFF___typepairs__epsilon) 
 		elif ( dict_keywords['fine_tune_epsilon'] == 'RegressionTot' ):
 			newFF___pairs__epsilon, \
 			newFF___typepairs__epsilon = do_regression_epsilon_Tot(origFF___typepairs__epsilon) 
@@ -790,6 +792,10 @@ def get_input():
 	else:
 		sys.exit('== Error: keyword \'fine_tune_sigma\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
 	
+	if dict_keywords['fine_tune_sigma'] == 'TS':
+		astring = get_input_loop_lines2(lines, 'fine_tune_specific_sigma')
+		dict_keywords['fine_tune_specific_sigma'] = astring
+	
 	astring = get_input_loop_lines(lines, 'fine_tune_epsilon')
 	if astring in ['False', 'false']:
 		dict_keywords['fine_tune_epsilon'] = 'False'
@@ -803,6 +809,10 @@ def get_input():
 		dict_keywords['fine_tune_epsilon'] = 'RegressionTot'
 	else:
 		sys.exit('== Error: keyword \'fine_tune_epsilon\' not set correctly. Check input file \'ffaffurr.input\'. Exiting now...')
+	
+	if ( dict_keywords['fine_tune_epsilon'] == 'TS' ) or ( dict_keywords['fine_tune_epsilon'] == 'RegressionTS' ) or ( dict_keywords['fine_tune_epsilon'] == 'RegressionMBD' ) or ( dict_keywords['fine_tune_epsilon'] == 'RegressionTot' ):
+		astring = get_input_loop_lines2(lines, 'fine_tune_specific_epsilon')
+		dict_keywords['fine_tune_specific_epsilon'] = astring
 	
 	if ( dict_keywords['fine_tune_sigma'] == 'TS' ) or ( dict_keywords['fine_tune_epsilon'] == 'TS' ):
 		astring = get_input_loop_lines(lines, 'SetExplicitlyZero_vdW_SigmaEpsilon')
@@ -979,6 +989,23 @@ def get_input_loop_lines(lines, key):
 	if string in ['dummy']:
 		sys.exit('== Error: keyword \''+key+'\' not found in \'ffaffurr.input\'! Exiting now...')
 	return(string)
+	
+def get_input_loop_lines2(lines, key):
+	string = []
+	for line in lines:
+		line = line.rstrip() # skip blank lines
+		if line:
+			line = line.lstrip()
+			if not line.startswith("#"):
+				keyword= line.split(None, 3)[0]
+				keycontent1 = line.split(None, 3)[1]
+				keycontent2 = line.split(None, 3)[2]
+				if keyword in [key]:
+					string = [keycontent1, keycontent2]
+					break
+	#if string in ['dummy']:
+	#	sys.exit('== Error: keyword \''+key+'\' not found in \'ffaffurr.input\'! Exiting now...')
+	return(string)
 
 ############################################################
 # get original FF parameters from user provided 'input.pdb'
@@ -1029,6 +1056,9 @@ def get_originalFF_params():
 	
 	# Make a list of all atoms ('name', 'element', 'index', 'residue', 'id')
 	data.atoms = list(pdb.topology.atoms())
+	n_atom__residue = {}
+	for i in data.atoms:
+		n_atom__residue[i.index] = i.residue.name
 	
 	# Make a list of all bonds
 	bondedToAtom = forcefield._buildBondedToAtomList(pdb.topology)
@@ -1348,6 +1378,7 @@ def get_originalFF_params():
 				type__averageAlpha0eff[ atom.attrib['type'] ] = float( atom.attrib['polarizability'] )	
 	
 	return(n_atoms, \
+			n_atom__residue, \
 			residues__atoms, \
 			n_atom__type, \
 			n_atom__class, \
@@ -3187,24 +3218,61 @@ def get_rmsd(classpair__Kb, \
 # fine-tune and get (type)pair-wise sigmas from TS (using R0eff)
 ############################################################
 
-def get_sigmas_TS():
+def get_sigmas_TS(origFF___pairs__sigma):
 
 	#type__averageR0eff = get_R0eff()
 	
 	pairs__sigma = {}
 	typepairs__sigma = {}
 	
-	# loop over all atom pairs, exclude 1-2 and 1-3 interactions
-	for i in range(n_atoms):
-		for j in range(i+1, n_atoms):
-			if ( not ( (i,j) in list_12_interacts ) ) and ( not ( (i,j) in list_13_interacts )):
+	if ( dict_keywords['fine_tune_specific_sigma'] == ['False', 'False'] ) or ( dict_keywords['fine_tune_specific_sigma'] == ['false', 'false'] ):
+		# loop over all atom pairs, exclude 1-2 and 1-3 interactions
+		for i in range(n_atoms):
+			for j in range(i+1, n_atoms):
+				if ( not ( (i,j) in list_12_interacts ) ) and ( not ( (i,j) in list_13_interacts )):
+		
+					pairs__sigma[ (i,j) ] = ( type__averageR0eff[ n_atom__type[i] ] + type__averageR0eff[ n_atom__type[j] ] ) * (2.**(-1./6.)) * (0.1)   # angstrom to nm
+		
+					if n_atom__type[i] <= n_atom__type[j]:
+						typepairs__sigma[ ( int(n_atom__type[i]),int(n_atom__type[j]) ) ] = pairs__sigma[ (i,j) ]
+					else:
+						typepairs__sigma[ ( int(n_atom__type[j]),int(n_atom__type[i]) ) ] = pairs__sigma[ (i,j) ]
 	
-				pairs__sigma[ (i,j) ] = ( type__averageR0eff[ n_atom__type[i] ] + type__averageR0eff[ n_atom__type[j] ] ) * (2.**(-1./6.)) * (0.1)   # angstrom to nm
-	
-				if n_atom__type[i] <= n_atom__type[j]:
-					typepairs__sigma[ ( int(n_atom__type[i]),int(n_atom__type[j]) ) ] = pairs__sigma[ (i,j) ]
+	else:
+		residue1 = dict_keywords['fine_tune_specific_sigma'][0]
+		residue2 = dict_keywords['fine_tune_specific_sigma'][1]
+		
+		n_atom_list1 = []
+		n_atom_list2 = []
+		 
+		for i in range(n_atoms):
+			if n_atom__residue[i] == residue1:
+				n_atom_list1.append(i)
+			elif n_atom__residue[i] == residue2:
+				n_atom_list2.append(i)
+				
+		specific_pairs = []
+		for i in n_atom_list1:
+			for j in n_atom_list2:
+				if i < j:
+					pair=(i,j)
 				else:
-					typepairs__sigma[ ( int(n_atom__type[j]),int(n_atom__type[i]) ) ] = pairs__sigma[ (i,j) ]
+					pair = (j,i)
+				specific_pairs.append(pair)
+		
+		# loop over all atom pairs, exclude 1-2 and 1-3 interactions
+		for i in range(n_atoms):
+			for j in range(i+1, n_atoms):
+				if ( not ( (i,j) in list_12_interacts ) ) and ( not ( (i,j) in list_13_interacts )):
+					if (i,j) in specific_pairs:
+						pairs__sigma[ (i,j) ] = ( type__averageR0eff[ n_atom__type[i] ] + type__averageR0eff[ n_atom__type[j] ] ) * (2.**(-1./6.)) * (0.1)   # angstrom to nm
+					else:
+						pairs__sigma[ (i,j) ] = origFF___pairs__sigma[(i,j)]
+		
+					if n_atom__type[i] <= n_atom__type[j]:
+						typepairs__sigma[ ( int(n_atom__type[i]),int(n_atom__type[j]) ) ] = pairs__sigma[ (i,j) ]
+					else:
+						typepairs__sigma[ ( int(n_atom__type[j]),int(n_atom__type[i]) ) ] = pairs__sigma[ (i,j) ]
 	
 	return(pairs__sigma, \
 			typepairs__sigma)
@@ -3300,7 +3368,7 @@ def get_C6free_alpha0free():
 # fine-tune and get (type)pair-wise epsilons from TS (using R0eff, C6eff, alpha0eff)
 ############################################################
 
-def get_epsilons_TS():
+def get_epsilons_TS(origFF___pairs__epsilon):
 
 	sortedlist_types = []
 	for n_atom,atype in n_atom__type.items():
@@ -3353,27 +3421,74 @@ def get_epsilons_TS():
 	pairs__epsilon = {}
 	typepairs__epsilon = {}
 	
-	# loop over all atom pairs, exclude 1-2 and 1-3 interactions
-	for i in range(n_atoms):
-		for j in range(i+1, n_atoms):
-			if ( not ( (i,j) in list_12_interacts ) ) and ( not ( (i,j) in list_13_interacts )):
-	
-				sigma = ( type__averageR0eff[ n_atom__type[i] ] + type__averageR0eff[ n_atom__type[j] ] ) * (2.**(-1./6.))
-	
-				C6i = type__averageC6eff[ n_atom__type[i] ]
-				C6j = type__averageC6eff[ n_atom__type[j] ]
-	
-				alpha0i = type__averageAlpha0eff[ n_atom__type[i] ]
-				alpha0j = type__averageAlpha0eff[ n_atom__type[j] ]
-	
-				C6 = ( 2. * C6i * C6j ) / ( (alpha0j/alpha0i)*C6i + (alpha0i/alpha0j)*C6j )
-	
-				pairs__epsilon[ (i,j) ] = C6 / ( 4.* sigma**6. ) * 96.485309# eV to kJ/mol
-	
-				if n_atom__type[i] <= n_atom__type[j]:
-					typepairs__epsilon[ ( int(n_atom__type[i]),int(n_atom__type[j]) ) ] = pairs__epsilon[ (i,j) ]
+	if ( dict_keywords['fine_tune_specific_epsilon'] == ['False', 'False'] ) or ( dict_keywords['fine_tune_specific_epsilon'] == ['false', 'false'] ):
+		# loop over all atom pairs, exclude 1-2 and 1-3 interactions
+		for i in range(n_atoms):
+			for j in range(i+1, n_atoms):
+				if ( not ( (i,j) in list_12_interacts ) ) and ( not ( (i,j) in list_13_interacts )):
+		
+					sigma = ( type__averageR0eff[ n_atom__type[i] ] + type__averageR0eff[ n_atom__type[j] ] ) * (2.**(-1./6.))
+		
+					C6i = type__averageC6eff[ n_atom__type[i] ]
+					C6j = type__averageC6eff[ n_atom__type[j] ]
+		
+					alpha0i = type__averageAlpha0eff[ n_atom__type[i] ]
+					alpha0j = type__averageAlpha0eff[ n_atom__type[j] ]
+		
+					C6 = ( 2. * C6i * C6j ) / ( (alpha0j/alpha0i)*C6i + (alpha0i/alpha0j)*C6j )
+		
+					pairs__epsilon[ (i,j) ] = C6 / ( 4.* sigma**6. ) * 96.485309# eV to kJ/mol
+		
+					if n_atom__type[i] <= n_atom__type[j]:
+						typepairs__epsilon[ ( int(n_atom__type[i]),int(n_atom__type[j]) ) ] = pairs__epsilon[ (i,j) ]
+					else:
+						typepairs__epsilon[ ( int(n_atom__type[j]),int(n_atom__type[i]) ) ] = pairs__epsilon[ (i,j) ]
+						
+	else:
+		residue1 = dict_keywords['fine_tune_specific_sigma'][0]
+		residue2 = dict_keywords['fine_tune_specific_sigma'][1]
+		
+		n_atom_list1 = []
+		n_atom_list2 = []
+		 
+		for i in range(n_atoms):
+			if n_atom__residue[i] == residue1:
+				n_atom_list1.append(i)
+			elif n_atom__residue[i] == residue2:
+				n_atom_list2.append(i)
+				
+		specific_pairs = []
+		for i in n_atom_list1:
+			for j in n_atom_list2:
+				if i < j:
+					pair=(i,j)
 				else:
-					typepairs__epsilon[ ( int(n_atom__type[j]),int(n_atom__type[i]) ) ] = pairs__epsilon[ (i,j) ]
+					pair = (j,i)
+				specific_pairs.append(pair)
+				
+		# loop over all atom pairs, exclude 1-2 and 1-3 interactions
+		for i in range(n_atoms):
+			for j in range(i+1, n_atoms):
+				if ( not ( (i,j) in list_12_interacts ) ) and ( not ( (i,j) in list_13_interacts )):
+					if (i,j) in specific_pairs:
+						sigma = ( type__averageR0eff[ n_atom__type[i] ] + type__averageR0eff[ n_atom__type[j] ] ) * (2.**(-1./6.))
+			
+						C6i = type__averageC6eff[ n_atom__type[i] ]
+						C6j = type__averageC6eff[ n_atom__type[j] ]
+			
+						alpha0i = type__averageAlpha0eff[ n_atom__type[i] ]
+						alpha0j = type__averageAlpha0eff[ n_atom__type[j] ]
+			
+						C6 = ( 2. * C6i * C6j ) / ( (alpha0j/alpha0i)*C6i + (alpha0i/alpha0j)*C6j )
+			
+						pairs__epsilon[ (i,j) ] = C6 / ( 4.* sigma**6. ) * 96.485309# eV to kJ/mol
+					else:
+						pairs__epsilon[ (i,j) ] = origFF___pairs__epsilon[ (i,j) ]
+		
+					if n_atom__type[i] <= n_atom__type[j]:
+						typepairs__epsilon[ ( int(n_atom__type[i]),int(n_atom__type[j]) ) ] = pairs__epsilon[ (i,j) ]
+					else:
+						typepairs__epsilon[ ( int(n_atom__type[j]),int(n_atom__type[i]) ) ] = pairs__epsilon[ (i,j) ]
 	
 	return(pairs__epsilon, \
 			typepairs__epsilon)
@@ -4120,13 +4235,37 @@ def get_torsionsEnergyContribs(origFF___classquadruple__V1, origFF___classquadru
 #            {   1 for 1-5-interactions and higher
 ############################################################
 
-def get_vdWenergyContribs(pairs__sigma):
+def get_vdWenergyContribs(pairs__sigma, origin__pairs__epsilon):
 
 	listofdicts_logfiles___typepairs__vdWenergyContribs = []
 	listofdicts_logfiles___typepairs__vdWenergyContribs_BW = []
+	listofdicts_logfiles___E_vdw_remove_specific_pairs = []
 	
+	if ( dict_keywords['fine_tune_specific_sigma'] != ['False', 'False'] ) and ( dict_keywords['fine_tune_specific_sigma'] != ['false', 'false'] ):
+		residue1 = dict_keywords['fine_tune_specific_sigma'][0]
+		residue2 = dict_keywords['fine_tune_specific_sigma'][1]
+		
+		n_atom_list1 = []
+		n_atom_list2 = []
+		
+		for i in range(n_atoms):
+			if n_atom__residue[i] == residue1:
+				n_atom_list1.append(i)
+			elif n_atom__residue[i] == residue2:
+				n_atom_list2.append(i)
+				
+		specific_pairs = []
+		for i in n_atom_list1:
+			for j in n_atom_list2:
+				if i < j:
+					pair=(i,j)
+				else:
+					pair = (j,i)
+				specific_pairs.append(pair)
+
 	a=-1
 	for n_atom__xyz in listofdicts_logfiles___n_atom__xyz:
+		E_vdw_remove_specific_pairs = 0
 		
 		a+=1
 	
@@ -4137,29 +4276,50 @@ def get_vdWenergyContribs(pairs__sigma):
 			typepairs__vdWenergyContribs_BW = {}
 	
 		for pair,sigma in pairs__sigma.items():
-	
+			
 			if pair in list_14_interacts:
 				f = 0.5
 			else:
 				f = 1.
-	
+		
 			r = pairs__distances[pair]
+				
+			if ( dict_keywords['fine_tune_specific_sigma'] == ['False', 'False'] ) or ( dict_keywords['fine_tune_specific_sigma'] == ['false', 'false'] ):
+		
+				if n_atom__type[pair[0]] <= n_atom__type[pair[1]]:
+					atuple = ( int(n_atom__type[pair[0]]),int(n_atom__type[pair[1]]) )
+				else:
+					atuple = ( int(n_atom__type[pair[1]]),int(n_atom__type[pair[0]]) )
 	
-			if n_atom__type[pair[0]] <= n_atom__type[pair[1]]:
-				atuple = ( int(n_atom__type[pair[0]]),int(n_atom__type[pair[1]]) )
+				if atuple in typepairs__vdWenergyContribs:
+					typepairs__vdWenergyContribs[ atuple ] += 4. * f * ( (sigma/r)**12. - (sigma/r)**6. )
+					if dict_keywords['boltzmann_weighted_fitting'] == True:
+						typepairs__vdWenergyContribs_BW[ atuple ] += 4. * f * ( (sigma/r)**12. - (sigma/r)**6. ) * math.sqrt(Boltzmann_weight[a])
+				else:
+					typepairs__vdWenergyContribs[ atuple ] = 4. * f * ( (sigma/r)**12. - (sigma/r)**6. )
+					if dict_keywords['boltzmann_weighted_fitting'] == True:
+						typepairs__vdWenergyContribs_BW[ atuple ] = 4. * f * ( (sigma/r)**12. - (sigma/r)**6. ) * math.sqrt(Boltzmann_weight[a])
 			else:
-				atuple = ( int(n_atom__type[pair[1]]),int(n_atom__type[pair[0]]) )
-
-			if atuple in typepairs__vdWenergyContribs:
-				typepairs__vdWenergyContribs[ atuple ] += 4. * f * ( (sigma/r)**12. - (sigma/r)**6. )
-				if dict_keywords['boltzmann_weighted_fitting'] == True:
-					typepairs__vdWenergyContribs_BW[ atuple ] += 4. * f * ( (sigma/r)**12. - (sigma/r)**6. ) * math.sqrt(Boltzmann_weight[a])
-			else:
-				typepairs__vdWenergyContribs[ atuple ] = 4. * f * ( (sigma/r)**12. - (sigma/r)**6. )
-				if dict_keywords['boltzmann_weighted_fitting'] == True:
-					typepairs__vdWenergyContribs_BW[ atuple ] = 4. * f * ( (sigma/r)**12. - (sigma/r)**6. ) * math.sqrt(Boltzmann_weight[a])
+				if pair in specific_pairs:
+					if n_atom__type[pair[0]] <= n_atom__type[pair[1]]:
+						atuple = ( int(n_atom__type[pair[0]]),int(n_atom__type[pair[1]]) )
+					else:
+						atuple = ( int(n_atom__type[pair[1]]),int(n_atom__type[pair[0]]) )
+		
+					if atuple in typepairs__vdWenergyContribs:
+						typepairs__vdWenergyContribs[ atuple ] += 4. * f * ( (sigma/r)**12. - (sigma/r)**6. )
+						#if dict_keywords['boltzmann_weighted_fitting'] == True:
+						#	typepairs__vdWenergyContribs_BW[ atuple ] += 4. * f * ( (sigma/r)**12. - (sigma/r)**6. ) * math.sqrt(Boltzmann_weight[a])
+					else:
+						typepairs__vdWenergyContribs[ atuple ] = 4. * f * ( (sigma/r)**12. - (sigma/r)**6. )
+						#if dict_keywords['boltzmann_weighted_fitting'] == True:
+						#	typepairs__vdWenergyContribs_BW[ atuple ] = 4. * f * ( (sigma/r)**12. - (sigma/r)**6. ) * math.sqrt(Boltzmann_weight[a])
+				else:
+					epsilon = origin__pairs__epsilon[pair]
+					E_vdw_remove_specific_pairs += 4. * epsilon * f * ( (sigma/r)**12. - (sigma/r)**6. )
 	
 		listofdicts_logfiles___typepairs__vdWenergyContribs.append( typepairs__vdWenergyContribs )
+		listofdicts_logfiles___E_vdw_remove_specific_pairs.append(E_vdw_remove_specific_pairs)
 		if dict_keywords['boltzmann_weighted_fitting'] == True:
 			listofdicts_logfiles___typepairs__vdWenergyContribs_BW.append( typepairs__vdWenergyContribs_BW )
 	
@@ -4185,7 +4345,7 @@ def get_vdWenergyContribs(pairs__sigma):
 		data['vdW_4*f*((sigma/r)**12-(sigma/r)**6)_typepair'+str(typepair)] = list_typepair_contribs
 		if dict_keywords['boltzmann_weighted_fitting'] == True:
 			data['vdW_4*f*((sigma/r)**12-(sigma/r)**6)_typepair_BW'+str(typepair)] = list_typepair_contribs_BW
-	
+	data['E_vdw_remove_specific_pairs'] = listofdicts_logfiles___E_vdw_remove_specific_pairs
 	return()
 
 
@@ -4193,16 +4353,20 @@ def get_vdWenergyContribs(pairs__sigma):
 # do regression for vdW energy (TS or MBD) to estimate epsilon parameters
 ###############################################################################
 
-def do_regression_epsilon_vdW():
+def do_regression_epsilon_vdW(origFF___typepairs__epsilon):
 
 	predictors = []
 	
 	for colname in data:
 		#if ( 'vdW' in colname ) and ( 'typepair' in colname ):
 		#	predictors.append( colname )
-		if dict_keywords['boltzmann_weighted_fitting'] == True:
-			if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' in colname):
-				predictors.append( colname )
+		if ( dict_keywords['fine_tune_specific_sigma'] == ['False', 'False'] ) or ( dict_keywords['fine_tune_specific_sigma'] == ['false', 'false'] ):
+			if dict_keywords['boltzmann_weighted_fitting'] == True:
+				if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' in colname):
+					predictors.append( colname )
+			else:
+				if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' not in colname):
+					predictors.append( colname )
 		else:
 			if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' not in colname):
 				predictors.append( colname )
@@ -4217,38 +4381,53 @@ def do_regression_epsilon_vdW():
 		elif dict_keywords['RestrictRegressionEpsilonPositive'] == False:
 			reg = Lasso(alpha=dict_keywords['regularization_parameter_epsilon'], fit_intercept=True, normalize=False, positive=False)
 	
-	if dict_keywords['fine_tune_epsilon'] == 'RegressionMBD':
-		if dict_keywords['boltzmann_weighted_fitting'] == True:
-			reg.fit(data[predictors], data[ 'E_MBD (Embd)_BW' ])
-		else:
-			reg.fit(data[predictors], data[ 'E_MBD (Embd)' ])
-		
-	elif dict_keywords['fine_tune_epsilon'] == 'RegressionTS':
-		#reg.fit(data[predictors], data[ 'E_vdW(TS) (EvdW)' ])
-		if dict_keywords['boltzmann_weighted_fitting'] == True:
-			reg.fit(data[predictors], data[ 'E_vdW(TS) (EvdW)_BW' ])
-		else:
-			reg.fit(data[predictors], data[ 'E_vdW(TS) (EvdW)' ])
-	
-	# get some infos
-	if True:
-		y_pred = reg.predict(data[predictors])
+	if ( dict_keywords['fine_tune_specific_sigma'] == ['False', 'False'] ) or ( dict_keywords['fine_tune_specific_sigma'] == ['false', 'false'] ):
 		if dict_keywords['fine_tune_epsilon'] == 'RegressionMBD':
-			rss = sum( (y_pred-data['E_MBD (Embd)'])**2. )
+			if dict_keywords['boltzmann_weighted_fitting'] == True:
+				reg.fit(data[predictors], data[ 'E_MBD (Embd)_BW' ])
+			else:
+				reg.fit(data[predictors], data[ 'E_MBD (Embd)' ])
+			
 		elif dict_keywords['fine_tune_epsilon'] == 'RegressionTS':
-			rss = sum( (y_pred-data['E_vdW(TS) (EvdW)'])**2. )
-		#print('RSS = ', rss)
-		#print('\n====\n')
-		#print('intercept = ', reg.intercept_)
+			#reg.fit(data[predictors], data[ 'E_vdW(TS) (EvdW)' ])
+			if dict_keywords['boltzmann_weighted_fitting'] == True:
+				reg.fit(data[predictors], data[ 'E_vdW(TS) (EvdW)_BW' ])
+			else:
+				reg.fit(data[predictors], data[ 'E_vdW(TS) (EvdW)' ])
 		
-		#for i in range(len(reg.coef_)):
-		#    print(predictors[i], reg.coef_[i])
+		# get some infos
+		if True:
+			y_pred = reg.predict(data[predictors])
+			if dict_keywords['fine_tune_epsilon'] == 'RegressionMBD':
+				rss = sum( (y_pred-data['E_MBD (Embd)'])**2. )
+			elif dict_keywords['fine_tune_epsilon'] == 'RegressionTS':
+				rss = sum( (y_pred-data['E_vdW(TS) (EvdW)'])**2. )
+			#print('RSS = ', rss)
+			#print('\n====\n')
+			#print('intercept = ', reg.intercept_)
+			
+			#for i in range(len(reg.coef_)):
+			#    print(predictors[i], reg.coef_[i])
+	else:
+		if dict_keywords['fine_tune_epsilon'] == 'RegressionMBD':
+			reg.fit(data[predictors], data[ 'E_MBD (Embd)' ]-data['E_vdw_remove_specific_pairs'])
+			
+		elif dict_keywords['fine_tune_epsilon'] == 'RegressionTS':
+			reg.fit(data[predictors], data[ 'E_vdW(TS) (EvdW)' ]-data['E_vdw_remove_specific_pairs'])
+		
+		# get some infos
+		if True:
+			y_pred = reg.predict(data[predictors])
+			if dict_keywords['fine_tune_epsilon'] == 'RegressionMBD':
+				rss = sum( (y_pred-(data['E_MBD (Embd)']-data['E_vdw_remove_specific_pairs']))**2. )
+			elif dict_keywords['fine_tune_epsilon'] == 'RegressionTS':
+				rss = sum( (y_pred-(data['E_vdW(TS) (EvdW)']-data['E_vdw_remove_specific_pairs']))**2. )
 	
 	
 	# get list of (already sorted) typepairs from DataFrame
 	sortedlist_typepairs = []
 	for colname in data:
-		if dict_keywords['boltzmann_weighted_fitting'] == True:
+		if (dict_keywords['boltzmann_weighted_fitting'] == True) and ( dict_keywords['fine_tune_specific_sigma'] == ['False', 'False'] ):
 			if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' in colname):
 				string_typepair = re.findall('\([0-9]*, [0-9]*\)',colname)
 				typepair = ast.literal_eval(string_typepair[0])
@@ -4261,8 +4440,16 @@ def do_regression_epsilon_vdW():
 	
 	typepairs__epsilon = {}
 	
-	for i in range(len(sortedlist_typepairs)):
-		typepairs__epsilon[ sortedlist_typepairs[i] ] = reg.coef_[i]
+	if ( dict_keywords['fine_tune_specific_sigma'] == ['False', 'False'] ) or ( dict_keywords['fine_tune_specific_sigma'] == ['false', 'false'] ):
+		for i in range(len(sortedlist_typepairs)):
+			typepairs__epsilon[ sortedlist_typepairs[i] ] = reg.coef_[i]
+	else:
+		for i in range(len(sortedlist_typepairs)):
+			typepairs__epsilon[ sortedlist_typepairs[i] ] = reg.coef_[i]
+			
+		for tp, value in origFF___typepairs__epsilon.items():
+			if tp not in sortedlist_typepairs:
+				typepairs__epsilon[tp] = origFF___typepairs__epsilon[tp]
 	
 	pairs__epsilon = {}
 	
@@ -4290,12 +4477,17 @@ def do_regression_epsilon_Tot(origFF___typepairs__epsilon):
 	for colname in data:
 		#if ( 'vdW' in colname ) and ( 'typepair' in colname ):
 		#	predictors.append( colname )
-		if dict_keywords['boltzmann_weighted_fitting'] == True:
-			if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' in colname):
-				predictors.append( colname )
+		if ( dict_keywords['fine_tune_specific_sigma'] == ['False', 'False'] ) or ( dict_keywords['fine_tune_specific_sigma'] == ['false', 'false'] ):
+			if dict_keywords['boltzmann_weighted_fitting'] == True:
+				if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' in colname):
+					predictors.append( colname )
+			else:
+				if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' not in colname):
+					predictors.append( colname )
 		else:
 			if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' not in colname):
 				predictors.append( colname )
+				
 				
 	if dict_keywords['RegressionEpsilonMethod'] == 'LinearRegression':
 		reg = LinearRegression(fit_intercept=True, normalize=False)
@@ -4307,13 +4499,23 @@ def do_regression_epsilon_Tot(origFF___typepairs__epsilon):
 		elif dict_keywords['RestrictRegressionEpsilonPositive'] == False:
 			reg = Lasso(alpha=dict_keywords['regularization_parameter_epsilon'], fit_intercept=True, normalize=False, positive=False)
 	
-	data['Ehl-Ecoul-Etorsions-Eimprops-Eangles-Ebonds-Epol'] = data['E_high-level (Ehl)'] \
+	if ( dict_keywords['fine_tune_specific_sigma'] == ['False', 'False'] ) or ( dict_keywords['fine_tune_specific_sigma'] == ['false', 'false'] ):
+		data['Ehl-Ecoul-Etorsions-Eimprops-Eangles-Ebonds-Epol'] = data['E_high-level (Ehl)'] \
 																	- data['Ecoul_(FF)'] \
 																	- data['Etorsions_(origFF)'] \
 																	- data['Eimprops_(FF)'] \
 																	- data['Eangles_(FF)'] \
 																	- data['Ebonds_(FF)'] \
 																	- data['Epol_(FF)']
+	else:
+		data['Ehl-Ecoul-Etorsions-Eimprops-Eangles-Ebonds-Epol'] = data['E_high-level (Ehl)'] \
+																	- data['Ecoul_(FF)'] \
+																	- data['Etorsions_(origFF)'] \
+																	- data['Eimprops_(FF)'] \
+																	- data['Eangles_(FF)'] \
+																	- data['Ebonds_(FF)'] \
+																	- data['Epol_(FF)'] \
+																	- data['E_vdw_remove_specific_pairs']
 	
 	if dict_keywords['boltzmann_weighted_fitting'] == True:
 		a=-1
@@ -4341,7 +4543,7 @@ def do_regression_epsilon_Tot(origFF___typepairs__epsilon):
 	# get list of (already sorted) typepairs from DataFrame
 	sortedlist_typepairs = []
 	for colname in data:
-		if dict_keywords['boltzmann_weighted_fitting'] == True:
+		if dict_keywords['boltzmann_weighted_fitting'] == True and ( dict_keywords['fine_tune_specific_sigma'] == ['False', 'False'] ):
 			if ( 'vdW' in colname ) and ( 'typepair' in colname ) and ('BW' in colname):
 				string_typepair = re.findall('\([0-9]*, [0-9]*\)',colname)
 				typepair = ast.literal_eval(string_typepair[0])
@@ -4354,8 +4556,16 @@ def do_regression_epsilon_Tot(origFF___typepairs__epsilon):
 	
 	typepairs__epsilon = {}
 	
-	for i in range(len(sortedlist_typepairs)):
-		typepairs__epsilon[ sortedlist_typepairs[i] ] = reg.coef_[i]
+	if ( dict_keywords['fine_tune_specific_sigma'] == ['False', 'False'] ) or ( dict_keywords['fine_tune_specific_sigma'] == ['false', 'false'] ):
+		for i in range(len(sortedlist_typepairs)):
+			typepairs__epsilon[ sortedlist_typepairs[i] ] = reg.coef_[i]
+	else:
+		for i in range(len(sortedlist_typepairs)):
+			typepairs__epsilon[ sortedlist_typepairs[i] ] = reg.coef_[i]
+			
+		for tp, value in origFF___typepairs__epsilon.items():
+			if tp not in sortedlist_typepairs:
+				typepairs__epsilon[tp] = origFF___typepairs__epsilon[tp]
 	
 	pairs__epsilon = {}
 	
