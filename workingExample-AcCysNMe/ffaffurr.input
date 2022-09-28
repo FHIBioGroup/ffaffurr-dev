@@ -1,0 +1,48 @@
+#######################################
+# General input file 'ffaffurr.input' #
+#######################################
+
+readparamsfromffaffurr False             #allowed values: False/True
+
+boltzmann_weighted_fitting False         #allowed values: False/True
+temperature_factor 32                    #only if boltzmann_weighted_fitting == True. Allowed values: int
+
+fine_tune_r0 False                       #allowed values: False/True
+
+fine_tune_theta0 False                   #allowed values: False/True
+
+fine_tune_torsionalV False               #allowed values: False/Regression
+RegressionTorsionalVall True             #only if fine_tune_torsionalV == Regression. Allowed values: False/True
+Regression_torsionalV_Method Ridge                #only if fine_tune_torsionalV == Regression. Allowed values: LinearRegression/Ridge/Lasso
+regularization_parameter_torsionalV 0.370633      #only if Regression_torsionalV_Method == {Ridge/Lasso}. Allowed values: float
+
+fine_tune_imptorsionalV False                     #allowed values: False/Regression
+Regression_imptorsionalV_Method Ridge             #only if fine_tune_imptorsionalV == Regression. Allowed values: LinearRegression/Ridge/Lasso
+regularization_parameter_imptorsionalV 30.0       #only if Regression_imptorsionalV_Method == {Ridge/Lasso}. Allowed values: float
+
+fine_tune_sigma False                             #allowed values: False/TS
+fine_tune_specific_sigma False False              #only if fine_tune_sigma == TS. Allowed values: False False/residue1 residue2 (eg. CYS Zn) 
+fine_tune_epsilon False                           #allowed values: False/TS/RegressionTS/RegressionMBD/RegressionTot
+fine_tune_specific_epsilon  False False           #only if fine_tune_epsilon == TS/RegressionTS/RegressionMBD/RegressionTot. Allowed values: False False/residue1 residue2 (eg. CYS Zn)
+RegressionEpsilonMethod Lasso                     #only if fine_tune_epsilon == Regression{TS/MBD/Tot}. Allowed values: LinearRegression/Ridge/Lasso
+regularization_parameter_epsilon 0.00179          #only if RegressionEpsilonMethod == {Ridge/Lasso}. Aallowed values: float
+RestrictRegressionEpsilonPositive True            #only if RegressionEpsilonMethod == Lasso. Allowed values: False/True
+SetExplicitlyZero_vdW_SigmaEpsilon False          #only if fine_tune_{sigma/epsilon} == TS. Allowed values: False/True
+
+fine_tune_charge False                            #allowed values: False/Hirshfeld/ESP/RESP
+fine_tune_Coulomb_fudge_factors False             #allowed values: False/True
+fine_tune_only_f14 False                          #only if fine_tune_Coulomb_fudge_factors == True. Allowed values: False/True
+
+fine_tune_charge_transfer False                   #allowed values: False/Tot/ChargDistr/ESP/Inter
+ChargeTransferESPMethod Lasso                     #only if fine_tune_charge_transfer == ESP. Allowed values: PSO/Ridge/Lasso
+regularization_parameter_CharTran 30.0            #only if ChargeTransferESPMethod == {Ridge/Lasso}. Allowed values: float
+number_of_pso_CT 1                                #only if fine_tune_charge_transfer == Tot/ChargDistr/Inter OR ChargeTransferESPMethod == PSO. Allowed values: int
+number_of_processes_CT 4                          #only if fine_tune_charge_transfer == Tot/ChargDistr/Inter OR ChargeTransferESPMethod == PSO. Allowed values: int
+fine_tune_isolated_charges False                  #only if fine_tune_charge_transfer == Tot/ChargDistr/Inter OR ChargeTransferESPMethod == PSO. Allowed values: False/Hirshfeld/ESP/RESP
+fine_tune_charges_distribution RESP               #only if fine_tune_charge_transfer == ChargDistr. Allowed values: Hirshfeld/ESP/RESP
+fine_tune_starting_points False                   #only if fine_tune_charge_transfer == Tot/ChargDistr/Inter OR ChargeTransferESPMethod == PSO. Allowed values: False/file_name(e.g. CT_initial)
+
+fine_tune_polarization_energy False               #allowed values: False/True
+fine_tune_polarizabilities False                  #only if fine_tune_polarization_energy == True. Allowed values: False/True
+number_of_pso_POL 1                               #only if fine_tune_polarizabilities == True. Allowed values: int
+number_of_processes_POL 4                         #only if fine_tune_polarizabilities == True. Allowed values: int
